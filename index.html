@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#0f172a" />
+  <title>PTM Realty CRM</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-mark">PTM</div>
+        <div><strong>Phúc Trường Minh</strong><span>Realty CRM</span></div>
+      </div>
+      <nav>
+        <button class="nav-item active" data-view="dashboard">▦ <span>Tổng quan</span></button>
+        <button class="nav-item" data-view="leads">◎ <span>Khách hàng</span></button>
+        <button class="nav-item" data-view="pipeline">◫ <span>Pipeline</span></button>
+        <button class="nav-item" data-view="properties">⌂ <span>Sản phẩm BĐS</span></button>
+        <button class="nav-item" data-view="deals">₫ <span>Giao dịch</span></button>
+        <button class="nav-item" data-view="tasks">✓ <span>Công việc</span></button>
+        <button class="nav-item" data-view="reports">↗ <span>Báo cáo</span></button>
+      </nav>
+      <div class="sidebar-footer"><div class="avatar">AD</div><div><strong>Admin CRM</strong><span>Quản trị viên</span></div></div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <div class="title-wrap">
+          <button id="menuBtn" class="icon-btn mobile-only">☰</button>
+          <div><h1 id="pageTitle">Tổng quan</h1><p id="pageSubtitle">Theo dõi hoạt động kinh doanh bất động sản hôm nay.</p></div>
+        </div>
+        <div class="top-actions">
+          <label class="search"><span>⌕</span><input id="globalSearch" placeholder="Tìm khách hàng, SĐT, dự án..." /></label>
+          <button class="btn ghost" id="exportBtn">Xuất dữ liệu</button>
+          <button class="btn primary" id="quickAddBtn">+ Thêm khách hàng</button>
+        </div>
+      </header>
+      <section id="view"></section>
+    </main>
+  </div>
+
+  <div class="toast" id="toast"></div>
+  <div class="modal-backdrop hidden" id="modalBackdrop">
+    <div class="modal">
+      <div class="modal-head"><div><h3 id="modalTitle">Thêm mới</h3><p id="modalDesc">Nhập thông tin bên dưới.</p></div><button class="icon-btn" id="closeModal">✕</button></div>
+      <form id="modalForm" class="form-grid"></form>
+    </div>
+  </div>
+  <script src="app.js"></script>
+</body>
+</html>
