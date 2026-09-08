@@ -89,14 +89,22 @@ export default function LeadOfferAlert() {
     try {
       if (!audioRef.current) {
         const AudioCtx = window.AudioContext || window.webkitAudioContext;
-        if (!AudioCtx) return;
+        if (!AudioCtx) return false;
         audioRef.current = new AudioCtx();
       }
       if (audioRef.current.state === "suspended") await audioRef.current.resume();
       const ok = audioRef.current.state === "running";
       setAudioReady(ok);
       if (ok && active) ring();
-    } catch {}
+      return ok;
+    } catch { return false; }
+  }
+
+  async function enableAlerts() {
+    await enableAudio();
+    if (typeof Notification !== "undefined" && Notification.permission === "default") {
+      try { await Notification.requestPermission(); } catch {}
+    }
   }
 
   function ring() {
@@ -157,7 +165,10 @@ export default function LeadOfferAlert() {
     } finally { setBusy(false); }
   }
 
-  if (!session || session.user?.role !== "sale" || !active) return null;
+  if (!session || session.user?.role !== "sale") return null;
+  if (!active) {
+    return !audioReady ? <button className="lead-sound-enable" onClick={enableAlerts}>🔔 Bật chuông lead</button> : null;
+  }
 
   const mm = String(Math.floor(secondsLeft / 60)).padStart(2, "0");
   const ss = String(secondsLeft % 60).padStart(2, "0");
