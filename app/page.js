@@ -1,7 +1,2 @@
-import { getCurrentUser } from "@/lib/auth";
-import { redirect } from "next/navigation";
-
-export default async function Home() {
-  const user = await getCurrentUser();
-  redirect(user ? "/dashboard" : "/login");
-}
+import CRMApp from "@/components/crm-app";
+export default function Page(){ return <CRMApp/>; }
