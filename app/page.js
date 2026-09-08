@@ -1,2 +1,6 @@
 import CRMApp from "@/components/crm-app";
-export default function Page(){ return <CRMApp/>; }
+import AttendanceLauncher from "@/components/attendance-launcher";
+
+export default function Page(){
+  return <><CRMApp/><AttendanceLauncher/></>;
+}
