@@ -1,5 +1,7 @@
 import "./enterprise.css";
 import "./customer-form.css";
+import "./customer-wave.css";
+import "./finance.css";
 import AttendanceLauncher from "@/components/attendance-launcher";
 import LeadOfferAlert from "@/components/lead-offer-alert";
 

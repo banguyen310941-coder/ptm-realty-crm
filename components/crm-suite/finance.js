@@ -1,0 +1,74 @@
+"use client";
+
+import { useMemo, useState } from "react";
+import { compactMoney, fmtDate, money } from "@/lib/crm-client";
+
+const CONTRACT_TYPES={booking:"Booking",deposit:"Đặt cọc",sale:"HĐ mua bán",lease:"Cho thuê",other:"Khác"};
+const CONTRACT_STATUS={draft:"Nháp",pending:"Chờ duyệt",signed:"Đã ký",completed:"Hoàn tất",cancelled:"Hủy"};
+const PAYMENT_TYPES={booking:"Booking",deposit:"Đặt cọc",installment:"Đợt thanh toán",final:"Thanh toán cuối",refund:"Hoàn tiền",other:"Khác"};
+const PAYMENT_STATUS={due:"Đến hạn",paid:"Đã thu",overdue:"Quá hạn",cancelled:"Hủy"};
+const COMMISSION_STATUS={pending:"Chờ duyệt",approved:"Đã duyệt",paid:"Đã chi",cancelled:"Hủy"};
+
+const EMPTY_CONTRACT={id:"",deal_id:"",lead_id:"",property_id:"",contract_type:"sale",status:"draft",total_value:"",signed_at:"",effective_date:"",document_url:"",notes:""};
+const EMPTY_PAYMENT={id:"",contract_id:"",deal_id:"",lead_id:"",payment_type:"installment",amount:"",due_date:"",paid_at:"",status:"due",reference:"",notes:""};
+const EMPTY_COMMISSION={id:"",deal_id:"",user_id:"",basis_amount:"",rate:"3",amount:"",status:"pending",notes:""};
+
+export function FinanceModule({ data, finance, financeReady, financeMutate }) {
+  const role=data.user.role;
+  const canManage=["admin","ceo","manager","accounting"].includes(role);
+  const canContract=[...new Set(["admin","ceo","manager","accounting","sale"])].includes(role);
+  const [tab,setTab]=useState("contracts");
+  const [modal,setModal]=useState(null);
+  const contracts=finance.contracts||[];
+  const payments=finance.payments||[];
+  const commissions=finance.commissions||[];
+  const summary=finance.summary||{};
+  const sales=(data.users||[]).filter((u)=>u.role==="sale"&&u.active!==false);
+
+  const overdue=useMemo(()=>payments.filter((p)=>p.status==="overdue"),[payments]);
+  const dueSoon=useMemo(()=>payments.filter((p)=>p.status==="due"&&p.due_date&&new Date(p.due_date).getTime()<=Date.now()+7*86400000),[payments]);
+
+  if(!financeReady) return <div className="suite-page"><div className="suite-page-head"><div><h1>Tài chính & Hợp đồng</h1><p>Hợp đồng, công nợ và hoa hồng theo giao dịch.</p></div></div><div className="suite-panel suite-empty suite-empty-large">Module tài chính đã được viết trong code nhưng đang chờ migration database được phê duyệt.</div></div>;
+
+  function openContract(c={}){setModal({type:"contract",draft:{...EMPTY_CONTRACT,...c}})}
+  function openPayment(p={}){setModal({type:"payment",draft:{...EMPTY_PAYMENT,...p}})}
+  function openCommission(c={}){setModal({type:"commission",draft:{...EMPTY_COMMISSION,...c}})}
+
+  return <div className="suite-page">
+    <div className="suite-page-head"><div><h1>Tài chính & Hợp đồng</h1><p>Theo dõi hợp đồng, lịch thu tiền, công nợ và hoa hồng từ một nguồn dữ liệu.</p></div><div className="suite-action-row">{canContract&&<button className="suite-btn" onClick={()=>openContract()}>+ Hợp đồng</button>}{canManage&&<button className="suite-btn" onClick={()=>openPayment()}>+ Khoản thu</button>}{canManage&&<button className="suite-btn primary" onClick={()=>openCommission()}>+ Hoa hồng</button>}</div></div>
+
+    <div className="finance-metrics"><Metric label="Giá trị hợp đồng" value={compactMoney(summary.contract_value)} note={`${contracts.filter(c=>c.status!=="cancelled").length} hợp đồng`}/><Metric label="Công nợ phải thu" value={compactMoney(summary.receivable)} note={`${dueSoon.length} khoản trong 7 ngày`}/><Metric label="Quá hạn" value={compactMoney(summary.overdue)} note={`${overdue.length} khoản quá hạn`} danger={Number(summary.overdue)>0}/><Metric label="Hoa hồng chờ xử lý" value={compactMoney(summary.commission_pending)} note={role==="sale"?"Hoa hồng của bạn":"Toàn công ty"}/></div>
+
+    <div className="finance-tabs"><button className={tab==="contracts"?"active":""} onClick={()=>setTab("contracts")}>Hợp đồng <span>{contracts.length}</span></button><button className={tab==="payments"?"active":""} onClick={()=>setTab("payments")}>Thanh toán & Công nợ <span>{payments.length}</span></button><button className={tab==="commissions"?"active":""} onClick={()=>setTab("commissions")}>Hoa hồng <span>{commissions.length}</span></button></div>
+
+    {tab==="contracts"&&<Contracts rows={contracts} canManage={canManage} canContract={canContract} open={openContract}/>} 
+    {tab==="payments"&&<Payments rows={payments} canManage={canManage} open={openPayment}/>} 
+    {tab==="commissions"&&<Commissions rows={commissions} canManage={canManage} open={openCommission}/>} 
+
+    {modal?.type==="contract"&&<ContractModal modal={modal} setModal={setModal} data={data} role={role} save={financeMutate}/>} 
+    {modal?.type==="payment"&&<PaymentModal modal={modal} setModal={setModal} data={data} contracts={contracts} save={financeMutate}/>} 
+    {modal?.type==="commission"&&<CommissionModal modal={modal} setModal={setModal} data={data} sales={sales} save={financeMutate}/>} 
+  </div>;
+}
+
+function Metric({label,value,note,danger}){return <div className={`finance-metric ${danger?"danger":""}`}><span>{label}</span><strong>{value}</strong><small>{note}</small></div>}
+function Contracts({rows,canManage,canContract,open}){return <section className="suite-panel"><div className="suite-table-wrap"><table className="suite-table"><thead><tr><th>Mã HĐ</th><th>Khách hàng</th><th>Sản phẩm</th><th>Loại</th><th>Trạng thái</th><th>Giá trị</th><th>Ngày ký</th><th/></tr></thead><tbody>{rows.map(c=><tr key={c.id}><td><b>{c.code}</b></td><td>{c.lead_name}</td><td>{c.property_name||"—"}</td><td>{CONTRACT_TYPES[c.contract_type]||c.contract_type}</td><td><span className={`suite-status status-${c.status}`}>{CONTRACT_STATUS[c.status]||c.status}</span></td><td>{money(c.total_value)}</td><td>{fmtDate(c.signed_at)}</td><td>{canContract&&<button className="suite-link" onClick={()=>open(c)}>{canManage?"Sửa":"Xem/Sửa nháp"}</button>}</td></tr>)}{!rows.length&&<tr><td colSpan="8"><div className="suite-empty">Chưa có hợp đồng.</div></td></tr>}</tbody></table></div></section>}
+function Payments({rows,canManage,open}){return <section className="suite-panel"><div className="suite-table-wrap"><table className="suite-table"><thead><tr><th>Khách hàng</th><th>Hợp đồng</th><th>Loại</th><th>Số tiền</th><th>Hạn thu</th><th>Trạng thái</th><th>Tham chiếu</th><th/></tr></thead><tbody>{rows.map(p=><tr key={p.id}><td><b>{p.lead_name}</b></td><td>{p.contract_code||"—"}</td><td>{PAYMENT_TYPES[p.payment_type]||p.payment_type}</td><td>{money(p.amount)}</td><td>{fmtDate(p.due_date)}</td><td><span className={`suite-status status-${p.status}`}>{PAYMENT_STATUS[p.status]||p.status}</span></td><td>{p.reference||"—"}</td><td>{canManage&&<button className="suite-link" onClick={()=>open(p)}>Cập nhật</button>}</td></tr>)}{!rows.length&&<tr><td colSpan="8"><div className="suite-empty">Chưa có lịch thanh toán.</div></td></tr>}</tbody></table></div></section>}
+function Commissions({rows,canManage,open}){return <section className="suite-panel"><div className="suite-table-wrap"><table className="suite-table"><thead><tr><th>Sale</th><th>Khách/Giao dịch</th><th>Cơ sở</th><th>Tỷ lệ</th><th>Hoa hồng</th><th>Trạng thái</th><th>Ngày chi</th><th/></tr></thead><tbody>{rows.map(c=><tr key={c.id}><td><b>{c.user_name}</b></td><td>{c.deal_lead_name||"—"}</td><td>{money(c.basis_amount)}</td><td>{Number(c.rate||0)}%</td><td><b>{money(c.amount)}</b></td><td><span className={`suite-status status-${c.status}`}>{COMMISSION_STATUS[c.status]||c.status}</span></td><td>{fmtDate(c.paid_at,true)}</td><td>{canManage&&<button className="suite-link" onClick={()=>open(c)}>Cập nhật</button>}</td></tr>)}{!rows.length&&<tr><td colSpan="8"><div className="suite-empty">Chưa có hoa hồng.</div></td></tr>}</tbody></table></div></section>}
+
+function ModalShell({title,children,onClose,onSubmit}){return <div className="finance-modal-overlay" onMouseDown={e=>e.target===e.currentTarget&&onClose()}><form className="finance-modal" onSubmit={onSubmit}><header><div><span className="eyebrow">PTM FINANCE</span><h2>{title}</h2></div><button type="button" onClick={onClose}>×</button></header>{children}<footer><button type="button" className="suite-btn" onClick={onClose}>Hủy</button><button className="suite-btn primary">Lưu</button></footer></form></div>}
+function Field({label,children,wide}){return <label className={wide?"wide":""}><span>{label}</span>{children}</label>}
+
+function ContractModal({modal,setModal,data,role,save}){
+  const d=modal.draft; const set=(k,v)=>setModal({...modal,draft:{...d,[k]:v}}); const sale=role==="sale";
+  const submit=async e=>{e.preventDefault();await save("contract.save",{...d,status:sale?"draft":d.status});setModal(null)};
+  return <ModalShell title={d.id?"Cập nhật hợp đồng":"Tạo hợp đồng"} onClose={()=>setModal(null)} onSubmit={submit}><div className="finance-form-grid"><Field label="Khách hàng"><select required value={d.lead_id} onChange={e=>set("lead_id",e.target.value)}><option value="">Chọn khách</option>{(data.leads||[]).map(l=><option key={l.id} value={l.id}>{l.name} · {l.phone}</option>)}</select></Field><Field label="Giao dịch"><select value={d.deal_id||""} onChange={e=>{const deal=(data.deals||[]).find(x=>x.id===e.target.value);setModal({...modal,draft:{...d,deal_id:e.target.value,lead_id:deal?.lead_id||d.lead_id,property_id:deal?.property_id||d.property_id,total_value:deal?.value||d.total_value}})}}><option value="">Không gắn</option>{(data.deals||[]).map(x=><option key={x.id} value={x.id}>{x.lead_name} · {x.property_name}</option>)}</select></Field><Field label="Sản phẩm"><select value={d.property_id||""} onChange={e=>set("property_id",e.target.value)}><option value="">Không gắn</option>{(data.properties||[]).map(p=><option key={p.id} value={p.id}>{p.project} · {p.code}</option>)}</select></Field><Field label="Loại hợp đồng"><select value={d.contract_type} onChange={e=>set("contract_type",e.target.value)}>{Object.entries(CONTRACT_TYPES).map(([v,l])=><option key={v} value={v}>{l}</option>)}</select></Field><Field label="Trạng thái"><select disabled={sale} value={sale?"draft":d.status} onChange={e=>set("status",e.target.value)}>{Object.entries(CONTRACT_STATUS).map(([v,l])=><option key={v} value={v}>{l}</option>)}</select></Field><Field label="Giá trị hợp đồng"><input type="number" min="0" value={d.total_value||""} onChange={e=>set("total_value",e.target.value)}/></Field><Field label="Ngày ký"><input type="date" value={String(d.signed_at||"").slice(0,10)} onChange={e=>set("signed_at",e.target.value)}/></Field><Field label="Ngày hiệu lực"><input type="date" value={String(d.effective_date||"").slice(0,10)} onChange={e=>set("effective_date",e.target.value)}/></Field><Field label="Link hồ sơ / PDF" wide><input value={d.document_url||""} onChange={e=>set("document_url",e.target.value)} placeholder="https://..."/></Field><Field label="Ghi chú" wide><textarea value={d.notes||""} onChange={e=>set("notes",e.target.value)}/></Field></div></ModalShell>
+}
+function PaymentModal({modal,setModal,data,contracts,save}){
+  const d=modal.draft; const set=(k,v)=>setModal({...modal,draft:{...d,[k]:v}}); const submit=async e=>{e.preventDefault();await save("payment.save",d);setModal(null)};
+  return <ModalShell title={d.id?"Cập nhật khoản thu":"Tạo lịch thanh toán"} onClose={()=>setModal(null)} onSubmit={submit}><div className="finance-form-grid"><Field label="Hợp đồng"><select value={d.contract_id||""} onChange={e=>{const c=contracts.find(x=>x.id===e.target.value);setModal({...modal,draft:{...d,contract_id:e.target.value,lead_id:c?.lead_id||d.lead_id,deal_id:c?.deal_id||d.deal_id}})}}><option value="">Không gắn</option>{contracts.map(c=><option key={c.id} value={c.id}>{c.code} · {c.lead_name}</option>)}</select></Field><Field label="Khách hàng"><select required value={d.lead_id} onChange={e=>set("lead_id",e.target.value)}><option value="">Chọn khách</option>{(data.leads||[]).map(l=><option key={l.id} value={l.id}>{l.name}</option>)}</select></Field><Field label="Loại khoản thu"><select value={d.payment_type} onChange={e=>set("payment_type",e.target.value)}>{Object.entries(PAYMENT_TYPES).map(([v,l])=><option key={v} value={v}>{l}</option>)}</select></Field><Field label="Số tiền"><input required type="number" min="0" value={d.amount||""} onChange={e=>set("amount",e.target.value)}/></Field><Field label="Hạn thanh toán"><input type="date" value={String(d.due_date||"").slice(0,10)} onChange={e=>set("due_date",e.target.value)}/></Field><Field label="Trạng thái"><select value={d.status} onChange={e=>set("status",e.target.value)}>{Object.entries(PAYMENT_STATUS).map(([v,l])=><option key={v} value={v}>{l}</option>)}</select></Field><Field label="Ngày đã thu"><input type="datetime-local" value={d.paid_at?String(d.paid_at).slice(0,16):""} onChange={e=>set("paid_at",e.target.value)}/></Field><Field label="Mã tham chiếu"><input value={d.reference||""} onChange={e=>set("reference",e.target.value)} placeholder="UNC/phiếu thu..."/></Field><Field label="Ghi chú" wide><textarea value={d.notes||""} onChange={e=>set("notes",e.target.value)}/></Field></div></ModalShell>
+}
+function CommissionModal({modal,setModal,data,sales,save}){
+  const d=modal.draft; const set=(k,v)=>setModal({...modal,draft:{...d,[k]:v}}); const submit=async e=>{e.preventDefault();await save("commission.save",d);setModal(null)};
+  return <ModalShell title={d.id?"Cập nhật hoa hồng":"Thiết lập hoa hồng"} onClose={()=>setModal(null)} onSubmit={submit}><div className="finance-form-grid"><Field label="Giao dịch"><select required value={d.deal_id} onChange={e=>{const deal=(data.deals||[]).find(x=>x.id===e.target.value);setModal({...modal,draft:{...d,deal_id:e.target.value,user_id:deal?.owner_id||d.user_id,basis_amount:deal?.value||d.basis_amount}})}}><option value="">Chọn giao dịch</option>{(data.deals||[]).map(x=><option key={x.id} value={x.id}>{x.lead_name} · {x.property_name} · {compactMoney(x.value)}</option>)}</select></Field><Field label="Nhân viên hưởng"><select required value={d.user_id} onChange={e=>set("user_id",e.target.value)}><option value="">Chọn Sale</option>{sales.map(u=><option key={u.id} value={u.id}>{u.name}</option>)}</select></Field><Field label="Giá trị tính hoa hồng"><input type="number" min="0" value={d.basis_amount||""} onChange={e=>set("basis_amount",e.target.value)}/></Field><Field label="Tỷ lệ %"><input type="number" min="0" step="0.01" value={d.rate||""} onChange={e=>set("rate",e.target.value)}/></Field><Field label="Số tiền (để trống = tự tính)"><input type="number" min="0" value={d.amount||""} onChange={e=>set("amount",e.target.value)}/></Field><Field label="Trạng thái"><select value={d.status} onChange={e=>set("status",e.target.value)}>{Object.entries(COMMISSION_STATUS).map(([v,l])=><option key={v} value={v}>{l}</option>)}</select></Field><Field label="Ghi chú" wide><textarea value={d.notes||""} onChange={e=>set("notes",e.target.value)}/></Field></div></ModalShell>
+}
