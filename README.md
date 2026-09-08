@@ -1,27 +1,44 @@
 # PTM Realty CRM
 
-CRM bất động sản MVP cho Công ty Phúc Trường Minh.
+CRM bất động sản online cho Công ty Phúc Trường Minh.
+
+## Stack
+- Next.js App Router
+- React
+- Neon PostgreSQL
+- Server Actions
+- JWT session cookie bằng `jose`
+- PBKDF2-SHA256 cho mật khẩu
+- Vercel
+
+## Phân quyền
+- **Admin:** toàn quyền, quản lý tài khoản, khách hàng, sản phẩm, giao dịch, công việc.
+- **Manager:** xem toàn bộ dữ liệu bán hàng, quản lý giỏ hàng và phân công.
+- **Sale:** chỉ thấy khách hàng, giao dịch và công việc được giao cho mình.
 
 ## Chức năng
-- Dashboard tổng quan
-- Quản lý khách hàng / lead
-- Pipeline bán hàng
-- Quản lý sản phẩm bất động sản
-- Quản lý giao dịch và hoa hồng
-- Quản lý công việc / lịch chăm sóc
-- Báo cáo nguồn khách và hiệu suất sales
-- Tìm kiếm, lọc, thêm / sửa / xóa dữ liệu
-- Lưu dữ liệu trên trình duyệt bằng localStorage
-- Responsive cho desktop và mobile
+- Đăng nhập và session bảo mật bằng httpOnly cookie
+- Dashboard doanh số/pipeline
+- Quản lý lead và trạng thái chăm sóc
+- Quản lý giỏ hàng bất động sản
+- Quản lý booking/giao dịch/hoa hồng
+- Quản lý công việc
+- Quản lý tài khoản nhân viên
+- Nhật ký hoạt động trong database
+- Responsive desktop/mobile
 
-## Chạy project
-Mở trực tiếp `index.html` bằng Chrome / Edge, hoặc chạy local server:
-
-```bash
-python -m http.server 8080
+## Biến môi trường
+Tạo:
+```env
+DATABASE_URL=...
+SESSION_SECRET=...
 ```
 
-Sau đó truy cập `http://localhost:8080`.
+## Chạy local
+```bash
+npm install
+npm run dev
+```
 
-## Giai đoạn hiện tại
-Đây là frontend MVP. Bước production dự kiến: Next.js + PostgreSQL + đăng nhập/phân quyền Admin/Manager/Sale + tích hợp Facebook Lead Ads/Zalo/Calendar + triển khai Vercel.
+## Production
+Deploy repo này lên Vercel và cấu hình 2 biến môi trường trên cho Production/Preview.
