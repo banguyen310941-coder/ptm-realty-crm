@@ -30,6 +30,7 @@ Backend RBAC là lớp quyết định quyền thật. Giao diện chỉ ẩn/hi
 - Lead mới đi qua bộ chia tự động ở backend; giao diện không quyết định Sale nhận lead.
 - Thuật toán ưu tiên Sale có ít lượt nhận lead nhất trong ca; nếu bằng nhau, ưu tiên người lâu nhất chưa được nhận lead.
 - Nếu không có Sale đủ điều kiện, lead giữ trạng thái **chờ phân** thay vì giao cho người đang nghỉ.
+- Heartbeat sẽ thử lấy **1 lead đang chờ mỗi khoảng 5 giây**. Khi Sale bắt đầu điểm danh, hàng chờ sẽ tự được phân dần theo cùng thuật toán chia đều.
 
 ## Quy tắc nhận lead 10 phút
 - Mỗi lần hệ thống phân lead sẽ tạo một **lead offer** có hạn 10 phút.
@@ -42,7 +43,7 @@ Backend RBAC là lớp quyết định quyền thật. Giao diện chỉ ẩn/hi
 - Sale có nút **🔔 Bật chuông lead** để mở quyền phát âm thanh của trình duyệt. Nếu cho phép Notifications, hệ thống có thể hiện thêm thông báo hệ thống.
 
 ## Heartbeat local
-Project hiện đang chạy theo hướng local-first. Neon project hiện không có `pg_cron`, vì vậy trong giai đoạn local việc kiểm tra offer hết 10 phút được thực hiện bằng heartbeat khoảng **5 giây** từ các phiên CRM đang mở.
+Project hiện đang chạy theo hướng local-first. Neon project hiện không có `pg_cron`, vì vậy trong giai đoạn local việc kiểm tra offer hết 10 phút và giải phóng hàng chờ được thực hiện bằng heartbeat khoảng **5 giây** từ các phiên CRM đang mở.
 
 Khi ít nhất một máy đang mở CRM, offer quá hạn được thu hồi/phân lại trong khoảng 10:00–10:05. Khi đưa production, cần gắn scheduler nền để cơ chế này chạy 24/7 ngay cả khi không có trình duyệt mở.
 
@@ -79,4 +80,4 @@ http://localhost:3000
 
 ## Trạng thái triển khai
 
-Project đang theo hướng **local-first**. Chưa cần đưa lên Vercel cho tới khi giao diện, nghiệp vụ và ma trận phân quyền được duyệt hoàn chỉnh.
+Project đang theo hướng **local-first**. Backend Neon chính đã có RBAC 5 vai trò, điểm danh, phân lead tự động, offer 10 phút, thu hồi/phân lại và hàng chờ. Chưa cần đưa lên Vercel cho tới khi giao diện, nghiệp vụ và ma trận phân quyền được duyệt hoàn chỉnh.
