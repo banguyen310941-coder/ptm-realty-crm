@@ -1,6 +1,4 @@
-import "./globals.css";
-import "./rpc.css";
-import "./full-crm.css";
+import "./enterprise.css";
 import AttendanceLauncher from "@/components/attendance-launcher";
 import LeadOfferAlert from "@/components/lead-offer-alert";
 
