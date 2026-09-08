@@ -1,6 +1,10 @@
--- PTM Realty CRM - automatic lead distribution trigger
+-- LEGACY / KHÔNG DÙNG CHO BẢN MỚI
+-- Cơ chế cũ giao lead trực tiếp, không có bước Sale xác nhận trong 10 phút.
+-- File được giữ lại để tham chiếu lịch sử.
+-- Cơ chế hiện hành nằm tại: sql/lead-offer-10-minute-routing.sql
+
+-- PTM Realty CRM - automatic lead distribution trigger (legacy)
 -- Requires attendance_records, lead_assignment_log and crm_pick_sale_for_lead().
--- Tested on Neon temporary branch before applying to main.
 
 CREATE OR REPLACE FUNCTION public.crm_auto_assign_lead_internal(p_lead_id uuid)
 RETURNS jsonb
@@ -67,7 +71,4 @@ AS 'BEGIN
   RETURN NEW;
 END';
 
-CREATE TRIGGER leads_auto_assign_after_insert
-AFTER INSERT ON public.leads
-FOR EACH ROW
-EXECUTE FUNCTION public.crm_lead_auto_assign_trigger();
+-- Không tự chạy file legacy này trên production.
