@@ -42,7 +42,6 @@ export default function AttendanceLauncher() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [mode, setMode] = useState("office");
-  const [evening, setEvening] = useState(false);
   const [photo, setPhoto] = useState("");
   const [clientName, setClientName] = useState("");
   const [note, setNote] = useState("");
@@ -92,7 +91,7 @@ export default function AttendanceLauncher() {
       await call("crm_check_in", {
         p_token: session.token,
         p_work_mode: mode,
-        p_evening_opt_in: evening,
+        p_evening_opt_in: false,
         p_photo_data: photo || null,
         p_client_name: clientName || null,
         p_note: note || null
@@ -133,20 +132,19 @@ export default function AttendanceLauncher() {
     {open && <div className="attendance-overlay" onMouseDown={(e) => e.target === e.currentTarget && setOpen(false)}>
       <div className="attendance-card">
         <div className="attendance-head">
-          <div><span className="eyebrow">Nhân sự & phân lead</span><h2>Điểm danh</h2><p>Giờ làm việc: 08:30 - 17:30 · Ngoài giờ ưu tiên Sale làm tối.</p></div>
+          <div><span className="eyebrow">Nhân sự & phân lead</span><h2>Điểm danh</h2><p>Giờ hành chính: 08:30 - 17:30. Sau 17:30, Sale vẫn nhận lead nếu chưa check-out.</p></div>
           <button className="attendance-close" onClick={() => setOpen(false)}>×</button>
         </div>
 
         {error && <div className="alert">{error}</div>}
         {status && <div className="attendance-status-grid">
           <div><span>Trạng thái</span><b>{attendance ? "Đã điểm danh" : "Chưa điểm danh"}</b></div>
-          <div><span>Ca hiện tại</span><b>{status.period === "day" ? "Giờ hành chính" : "Ngoài giờ"}</b></div>
+          <div><span>Thời gian</span><b>{status.period === "day" ? "08:30 - 17:30" : "Ngoài giờ"}</b></div>
           <div><span>Nhận lead</span><b>{isSale ? (status.eligible_for_leads ? "Đủ điều kiện" : "Chưa đủ điều kiện") : "Không áp dụng"}</b></div>
         </div>}
 
         {!attendance ? <div className="attendance-form">
           <label>Địa điểm làm việc<select value={mode} onChange={(e) => setMode(e.target.value)}><option value="office">Tại văn phòng</option><option value="client_visit">Ra ngoài gặp khách</option></select></label>
-          <label className="attendance-check"><input type="checkbox" checked={evening} onChange={(e) => setEvening(e.target.checked)} /> Tôi đăng ký làm buổi tối và muốn nhận lead ngoài giờ</label>
           {mode === "client_visit" && <>
             <label>Tên khách đang gặp<input value={clientName} onChange={(e) => setClientName(e.target.value)} placeholder="Ví dụ: Nguyễn Văn A" /></label>
             <label>Ảnh xác thực <input type="file" accept="image/*" capture="environment" onChange={onPhoto} /></label>
@@ -156,14 +154,14 @@ export default function AttendanceLauncher() {
           <button className="btn primary wide" onClick={checkIn} disabled={busy}>{busy ? "Đang xử lý..." : "Điểm danh vào ca"}</button>
         </div> : <div className="attendance-current">
           <p><b>{attendance.work_mode === "client_visit" ? "Đang gặp khách bên ngoài" : "Đang làm tại văn phòng"}</b></p>
-          <p>Đăng ký làm tối: <strong>{attendance.evening_opt_in ? "Có" : "Không"}</strong>{attendance.has_photo ? " · Đã có ảnh xác thực" : ""}</p>
+          <p>{attendance.has_photo ? "Đã có ảnh xác thực · " : ""}Sale sẽ tiếp tục nằm trong vòng nhận lead cho tới khi check-out.</p>
           <button className="btn ghost wide" onClick={checkOut} disabled={busy}>Kết thúc ca / Check-out</button>
         </div>}
 
         {["admin", "ceo", "manager"].includes(session.user?.role) && <div className="attendance-team">
-          <div className="panel-head"><div><h3>Điểm danh toàn công ty</h3><p>Sale chỉ được nhận lead khi trạng thái “Đủ điều kiện”.</p></div><button className="text-link" onClick={refresh}>Làm mới</button></div>
-          <div className="table-wrap"><table><thead><tr><th>Nhân viên</th><th>Vai trò</th><th>Điểm danh</th><th>Làm tối</th><th>Nhận lead</th></tr></thead><tbody>
-            {team.map((u) => <tr key={u.id}><td><b>{u.name}</b>{u.client_name && <small>Gặp: {u.client_name}</small>}</td><td>{roleLabel(u.role)}</td><td>{u.check_in_at ? (u.work_mode === "client_visit" ? `Gặp khách${u.has_photo ? " · Có ảnh" : ""}` : "Văn phòng") : "Chưa vào ca"}</td><td>{u.evening_opt_in ? "Có" : "—"}</td><td><span className={`badge ${u.can_receive_lead ? "status-deal" : "status-lost"}`}>{u.can_receive_lead ? "Đủ điều kiện" : "Không"}</span></td></tr>)}
+          <div className="panel-head"><div><h3>Điểm danh toàn công ty</h3><p>Sale chỉ được nhận lead khi đang có ca điểm danh hợp lệ.</p></div><button className="text-link" onClick={refresh}>Làm mới</button></div>
+          <div className="table-wrap"><table><thead><tr><th>Nhân viên</th><th>Vai trò</th><th>Điểm danh</th><th>Nhận lead</th></tr></thead><tbody>
+            {team.map((u) => <tr key={u.id}><td><b>{u.name}</b>{u.client_name && <small>Gặp: {u.client_name}</small>}</td><td>{roleLabel(u.role)}</td><td>{u.check_in_at ? (u.work_mode === "client_visit" ? `Gặp khách${u.has_photo ? " · Có ảnh" : ""}` : "Văn phòng") : "Chưa vào ca"}</td><td><span className={`badge ${u.can_receive_lead ? "status-deal" : "status-lost"}`}>{u.can_receive_lead ? "Đủ điều kiện" : "Không"}</span></td></tr>)}
           </tbody></table></div>
         </div>}
       </div>
