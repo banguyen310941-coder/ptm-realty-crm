@@ -1,18 +1,46 @@
-import { query } from "@/lib/db";
+import { createClient } from "@neondatabase/neon-js";
 
 export const dynamic = "force-dynamic";
 
+const DB_URL = process.env.NEXT_PUBLIC_NEON_DATA_API_URL ||
+  "https://ep-dawn-feather-az232vpl.c-3.ap-southeast-1.aws.neon.tech/neondb";
+
+function unwrap(data) {
+  return Array.isArray(data) ? data[0] : data;
+}
+
 export async function GET() {
   try {
-    const secretReady = Boolean(process.env.SESSION_SECRET && process.env.SESSION_SECRET.length >= 32);
-    const rows = await query("SELECT 1 AS ok");
-    const databaseReady = Number(rows?.[0]?.ok) === 1;
+    const client = createClient(DB_URL, { auth: { allowAnonymous: true } });
+    const { data, error } = await client.rpc("crm_api_v2", {
+      p_token: "",
+      p_action: "bootstrap",
+      p_payload: {}
+    });
+
+    const result = unwrap(data);
+    const databaseReady = !error && Boolean(
+      result?.ok === true ||
+      result?.ok === false ||
+      result?.code === "UNAUTHENTICATED"
+    );
 
     return Response.json(
-      { ok: secretReady && databaseReady, database: databaseReady, session: secretReady },
-      { status: secretReady && databaseReady ? 200 : 503 }
+      {
+        ok: databaseReady,
+        database: databaseReady,
+        auth: databaseReady,
+        mode: "neon-data-api"
+      },
+      {
+        status: databaseReady ? 200 : 503,
+        headers: { "Cache-Control": "no-store" }
+      }
     );
   } catch {
-    return Response.json({ ok: false, database: false, session: false }, { status: 503 });
+    return Response.json(
+      { ok: false, database: false, auth: false, mode: "neon-data-api" },
+      { status: 503, headers: { "Cache-Control": "no-store" } }
+    );
   }
 }
