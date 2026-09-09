@@ -1,83 +1,160 @@
 # PTM Realty CRM
 
-CRM bất động sản nội bộ cho Công ty Phúc Trường Minh.
+CRM bất động sản nội bộ cho Công ty Phúc Trường Minh, đang chạy production trên Vercel và dùng Neon làm backend dữ liệu.
 
-## Stack
-- Next.js App Router + React
-- Neon PostgreSQL
-- Neon Data API / PostgreSQL RPC
-- Session token CRM lưu ở PostgreSQL
-- PBKDF2-SHA256 cho mật khẩu
-- Chạy local trước, chưa yêu cầu triển khai Vercel
+## Production
 
-## Phân quyền công ty
+- App: `https://ptm-realty-crm.vercel.app`
+- Frontend/API: Next.js App Router trên Vercel
+- Database: Neon PostgreSQL
+- Kết nối ứng dụng: Neon Data API + PostgreSQL RPC
+- Auth CRM: session token lưu trong PostgreSQL
+- Backend nghiệp vụ nhạy cảm: PostgreSQL `SECURITY DEFINER` RPC
+- Múi giờ nghiệp vụ: Việt Nam (`Asia/Ho_Chi_Minh`)
 
-| Vai trò | Khách hàng | Sản phẩm | Giao dịch & tài chính | Công việc | Đội ngũ |
-| --- | --- | --- | --- | --- | --- |
-| **Giám đốc điều hành** | Toàn bộ, phân lead, xóa | Quản lý | Toàn bộ, xem KPI/hoa hồng | Toàn đội | Xem |
-| **Admin** | Toàn bộ, phân lead, xóa | Quản lý | Toàn bộ | Toàn đội | Tạo tài khoản, đổi role, khóa/mở |
-| **Marketing** | Toàn bộ, tạo/sửa lead | Chỉ xem | Xem trạng thái, ẩn số tiền/hoa hồng | Của mình | Không xem |
-| **Sale** | Chỉ lead của mình | Chỉ xem | Chỉ giao dịch của mình, xem hoa hồng cá nhân | Của mình | Không xem |
-| **Kế toán** | Chỉ xem toàn bộ | Chỉ xem | Toàn bộ tài chính, cập nhật hoa hồng/trạng thái | Của mình | Xem |
+Core production **không cần `DATABASE_URL` trên Vercel**. Các route server gọi RPC qua Neon Data API, giúp tránh đưa mật khẩu PostgreSQL vào runtime ứng dụng.
 
-Backend RBAC là lớp quyết định quyền thật. Giao diện chỉ ẩn/hiện module và nút theo quyền backend trả về; không dùng việc ẩn giao diện làm cơ chế bảo mật chính.
+## Luồng kinh doanh chính
 
-## Điểm danh & phân lead tự động
-- Giờ hành chính: **08:30 - 17:30** theo giờ Việt Nam.
-- Sale chỉ nằm trong vòng nhận lead khi có ca điểm danh đang mở trong ngày.
-- **Sau 17:30 không cần đăng ký làm tối.** Sale chưa check-out vẫn tiếp tục được nhận lead.
-- Nhân viên ra ngoài gặp khách phải chọn chế độ **Gặp khách** và có ảnh xác thực; thiếu ảnh thì database từ chối điểm danh.
-- Lead mới đi qua bộ chia tự động ở backend; giao diện không quyết định Sale nhận lead.
-- Thuật toán ưu tiên Sale có ít lượt nhận lead nhất trong ca; nếu bằng nhau, ưu tiên người lâu nhất chưa được nhận lead.
-- Nếu không có Sale đủ điều kiện, lead giữ trạng thái **chờ phân** thay vì giao cho người đang nghỉ.
-- Heartbeat sẽ thử lấy **1 lead đang chờ mỗi khoảng 5 giây**. Khi Sale bắt đầu điểm danh, hàng chờ sẽ tự được phân dần theo cùng thuật toán chia đều.
+`Lead → Phân Sale → Khách hàng 360° → Nhu cầu → Gợi ý mộ phần → Cơ hội → Giữ chỗ/Cọc → Hợp đồng → Thanh toán/Hoa hồng → CSKH`
 
-## Quy tắc nhận lead 10 phút
-- Mỗi lần hệ thống phân lead sẽ tạo một **lead offer** có hạn 10 phút.
-- Sale nhận được banner nổi với tên khách, SĐT, dự án và đồng hồ đếm ngược 10:00 → 00:00.
+### Khách hàng 360°
+
+Một hồ sơ khách tập trung các phần:
+
+- Tổng quan và điểm tiềm năng
+- Nhu cầu, ngân sách, khu/hướng/loại mộ
+- Lịch sử chăm sóc và lịch tiếp theo
+- Mộ phần quan tâm và gợi ý phù hợp
+- Cơ hội, giao dịch và công việc
+- Hợp đồng, thanh toán và công nợ
+- Ticket CSKH
+
+### Phân lead 10 phút
+
+- Lead mới được đưa vào cơ chế phân Sale ở backend.
+- Sale đủ điều kiện nhận lead sẽ nhận một `lead offer` có hạn 10 phút.
 - Sale phải bấm **Nhận khách** trong thời hạn.
-- Quá 10 phút chưa nhận: offer chuyển `expired`, lead bị thu hồi và phân sang Sale tiếp theo đang điểm danh.
-- Người vừa bỏ lỡ lượt được loại khỏi lần phân lại ngay tiếp theo để tránh giao lại chính người đó.
-- Lịch sử offer được lưu theo từng vòng để biết lead đã giao cho ai, lúc nào, có nhận hay để hết hạn.
-- CRM phát chuông Web Audio 3 nhịp và nhắc lại định kỳ cho tới khi Sale nhận khách hoặc offer hết hạn.
-- Sale có nút **🔔 Bật chuông lead** để mở quyền phát âm thanh của trình duyệt. Nếu cho phép Notifications, hệ thống có thể hiện thêm thông báo hệ thống.
+- Quá hạn, offer được thu hồi và hệ thống thử chuyển sang Sale tiếp theo phù hợp.
+- Lịch sử offer được lưu để truy vết ai nhận, ai bỏ lỡ và thời điểm xử lý.
 
-## Heartbeat local
-Project hiện đang chạy theo hướng local-first. Neon project hiện không có `pg_cron`, vì vậy trong giai đoạn local việc kiểm tra offer hết 10 phút và giải phóng hàng chờ được thực hiện bằng heartbeat khoảng **5 giây** từ các phiên CRM đang mở.
+### Lead đa nguồn
 
-Khi ít nhất một máy đang mở CRM, offer quá hạn được thu hồi/phân lại trong khoảng 10:00–10:05. Khi đưa production, cần gắn scheduler nền để cơ chế này chạy 24/7 ngay cả khi không có trình duyệt mở.
+Endpoint production:
 
-## Ảnh điểm danh
-Ảnh gặp khách hiện được nén ở trình duyệt trong bản local. Trước production nên chuyển ảnh sang Cloudinary hoặc Neon Storage và chỉ lưu URL trong PostgreSQL để tránh database tăng dung lượng nhanh.
+`POST /api/leads/intake?source=website|facebook|tiktok|zalo|google|hotline`
 
-## Chức năng
-- Đăng nhập CRM
-- Dashboard doanh số / pipeline theo phạm vi quyền
-- Quản lý lead và nguồn lead
-- Điểm danh nhân viên và kiểm soát điều kiện nhận lead
-- Phân lead tự động + xác nhận nhận khách trong 10 phút
-- Chuông/thông báo lead mới cho Sale
-- Quản lý giỏ hàng bất động sản
-- Booking / đặt cọc / hợp đồng / hoa hồng
-- Công việc và lịch chăm sóc
-- Quản lý tài khoản nhân viên cho Admin
-- Responsive desktop/mobile
+CRM hỗ trợ:
+
+- Website/form
+- Facebook/Meta
+- TikTok
+- Zalo
+- Google
+- Hotline
+- Chuẩn hóa nguồn và attribution
+- Chống trùng theo số điện thoại/email
+- Giữ lịch sử khách cũ khi lead trùng quay lại
+- Facebook/Meta webhook verification
+
+Webhook secret và Meta verify token chỉ được lưu dạng **SHA-256 hash trong Neon**, không commit secret thật vào GitHub.
+
+## Automation
+
+Automation được cấu hình từ `crm_automation_rules` và chạy qua RPC bảo mật.
+
+Các event hiện hỗ trợ:
+
+- `lead_created`
+- `lead_assigned`
+- `lead_accepted`
+- `lead_status_changed`
+- `followup_due`
+- `opportunity_stage_changed`
+- `ticket_created`
+- `deal_completed`
+
+Các action nội bộ đang hỗ trợ:
+
+- Tạo công việc
+- Tạo thông báo CRM
+- Đổi trạng thái khách
+- Gắn nhãn khách
+
+Hệ thống có chống tạo lặp công việc/thông báo trong cửa sổ 12 giờ.
+
+Email và Zalo/ZNS là kênh mở rộng, chỉ bật khi có credential doanh nghiệp tương ứng.
+
+## Dashboard CEO
+
+Dashboard quản lý tập trung các chỉ số và cảnh báo quan trọng:
+
+- Khách nóng
+- Lead chưa phân Sale
+- Việc quá hạn
+- Ticket khẩn
+- Công nợ
+- Pipeline
+- Sales leaderboard
+- Chuyển đổi theo nguồn
+- Rủi ro chăm sóc/SLA
+
+## Phân quyền
+
+| Vai trò | Phạm vi chính |
+| --- | --- |
+| CEO/Giám đốc | Toàn bộ dữ liệu, báo cáo, duyệt/xóa nghiệp vụ quan trọng |
+| Admin | Quản trị dữ liệu và tài khoản |
+| Marketing | Lead, nguồn khách, chiến dịch, báo cáo marketing |
+| Sale | Khách được giao, công việc, cơ hội và giao dịch của mình |
+| Kế toán | Hợp đồng, thanh toán, công nợ, hoa hồng |
+
+Quyền thật được kiểm tra ở backend/RPC; việc ẩn nút trên giao diện không được dùng làm lớp bảo mật duy nhất.
+
+## Giỏ mộ phần Thiên Phúc
+
+Kho mộ phần là dữ liệu sản phẩm thật và được giữ tách biệt với dữ liệu demo. Customer 360 có thể tìm/gợi ý sản phẩm phù hợp và tạo bước giữ chỗ từ hồ sơ khách.
+
+## API kiểm tra vận hành
+
+- `GET /api/health` — database/auth readiness
+- `GET /api/integrations/status` — readiness của lead webhook, Meta, Email, Zalo
+- `POST /api/automation/event` — phát automation event từ phiên CRM hợp lệ
+- `POST /api/automation/run` — sweep automation từ phiên CRM hợp lệ
+- `GET|POST /api/leads/intake` — verify/nhận lead đa nguồn
+
+## SQL versioned
+
+Các thay đổi backend quan trọng được lưu trong thư mục `sql/`.
+
+Đặc biệt:
+
+- `sql/lead-offer-10-minute-routing.sql`
+- `sql/attendance-auto-lead-trigger.sql`
+- `sql/finance-workflow-v2.sql`
+- `sql/integration-automation-rpc-v1.sql`
+
+File integration/automation **không chứa secret thật**. Secret production phải được provision riêng và chỉ lưu hash.
+
+## Legacy routes
+
+Các URL giao diện cũ như `/dashboard`, `/leads`, `/properties`, `/deals`, `/tasks`, `/team` đã được khóa ở layout và chuyển về CRM chính tại `/`. Điều này tránh chạy lại kiến trúc server cũ phụ thuộc PostgreSQL connection string.
 
 ## Chạy local
-
-Yêu cầu Node.js LTS. Trong thư mục project:
 
 ```bash
 npm install
 npm run dev
 ```
 
-Sau đó mở:
+Sau đó mở `http://localhost:3000`.
 
-```text
-http://localhost:3000
-```
+Phần giao diện CRM chính dùng Neon Data API giống production. Không thêm mật khẩu PostgreSQL vào source hoặc file Git-tracked.
 
-## Trạng thái triển khai
+## Quy tắc bảo mật
 
-Project đang theo hướng **local-first**. Backend Neon chính đã có RBAC 5 vai trò, điểm danh, phân lead tự động, offer 10 phút, thu hồi/phân lại và hàng chờ. Chưa cần đưa lên Vercel cho tới khi giao diện, nghiệp vụ và ma trận phân quyền được duyệt hoàn chỉnh.
+1. Không commit connection string, API key, access token hoặc webhook secret.
+2. Ưu tiên RPC `SECURITY DEFINER` có kiểm tra session/quyền cho nghiệp vụ nhạy cảm.
+3. Webhook secret chỉ lưu hash.
+4. Không xóa hoặc thay đổi dữ liệu sản phẩm thật khi xử lý dữ liệu demo.
+5. Mọi thay đổi production phải qua build/CI trước khi deploy.
