@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { compactMoney, fmtDate } from "@/lib/crm-client";
+import { cemeteryRpc, compactMoney, fmtDate, SESSION_KEY } from "@/lib/crm-client";
 
 const STAGES = [
   ["qualify", "Đánh giá", 10], ["consult", "Tư vấn", 25], ["visit", "Đi xem", 45], ["booking", "Giữ chỗ", 65],
@@ -16,11 +16,19 @@ function chooseLead(rows, title) {
   return rows[Number(raw) - 1] || null;
 }
 
+function fallbackCemeteryAction(action, payload) {
+  let token = "";
+  try { token = JSON.parse(localStorage.getItem(SESSION_KEY) || "null")?.token || ""; } catch {}
+  if (!token) throw new Error("Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.");
+  return cemeteryRpc(token, action, payload);
+}
+
 export function OpportunitiesModule({ data, full, permissions, fullMutate, cemeteryAction }) {
   const [dragId, setDragId] = useState(null);
   const [error, setError] = useState("");
   const opportunities = full.opportunities || [];
   const canManage = ["admin", "ceo", "manager", "sale"].includes(data.user.role);
+  const cemetery = cemeteryAction || fallbackCemeteryAction;
 
   async function createOpportunity() {
     if (!canManage) return;
@@ -31,8 +39,7 @@ export function OpportunitiesModule({ data, full, permissions, fullMutate, cemet
       const code = prompt("Mã mộ phần (để trống nếu khách chưa chọn)", ""); if (code === null) return;
       let plot = null;
       if (code.trim()) {
-        if (!cemeteryAction) throw new Error("Giỏ mộ phần chưa sẵn sàng.");
-        const out = await cemeteryAction("detail", { code: code.trim() });
+        const out = await cemetery("detail", { code: code.trim() });
         plot = out.plot || null;
         if (!plot) throw new Error(`Không tìm thấy mã mộ ${code.trim()}.`);
       }
