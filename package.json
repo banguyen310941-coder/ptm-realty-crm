@@ -8,12 +8,10 @@
     "start": "next start"
   },
   "dependencies": {
-    "@neondatabase/serverless": "^1.0.0",
-    "jose": "^6.0.0",
+    "@neondatabase/postgrest-js": "0.2.0-beta",
     "next": "^16.0.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
-    "@neondatabase/neon-js": "0.7.0-beta",
     "xlsx": "npm:@e965/xlsx@0.20.3"
   }
 }
