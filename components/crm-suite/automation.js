@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { integrationStatus } from "@/lib/crm-client";
 
 const EVENTS = [
   { value:"lead_created", label:"Khách hàng mới được tạo", group:"Tiếp nhận khách", icon:"◎", description:"Kích hoạt khi một khách mới được thêm thủ công, import hoặc đổ về CRM." },
@@ -14,12 +15,12 @@ const EVENTS = [
 ];
 
 const ACTIONS = [
-  { value:"create_task", label:"Tạo công việc cho nhân viên", icon:"✓", available:true },
-  { value:"notify_user", label:"Gửi thông báo trong CRM", icon:"♢", available:true },
-  { value:"update_lead_status", label:"Cập nhật tình trạng khách", icon:"↻", available:true },
-  { value:"add_tag", label:"Gắn nhãn khách hàng", icon:"#", available:true },
-  { value:"send_email", label:"Gửi Email tự động", icon:"@", available:false },
-  { value:"send_zalo", label:"Gửi Zalo/ZNS tự động", icon:"Z", available:false }
+  { value:"create_task", label:"Tạo công việc cho nhân viên", icon:"✓" },
+  { value:"notify_user", label:"Gửi thông báo trong CRM", icon:"♢" },
+  { value:"update_lead_status", label:"Cập nhật tình trạng khách", icon:"↻" },
+  { value:"add_tag", label:"Gắn nhãn khách hàng", icon:"#" },
+  { value:"send_email", label:"Gửi Email tự động", icon:"@", channel:"email" },
+  { value:"send_zalo", label:"Gửi Zalo/ZNS tự động", icon:"Z", channel:"zalo" }
 ];
 
 const TEMPLATES = [
@@ -74,7 +75,7 @@ const TEMPLATES = [
 ];
 
 function eventMeta(value) { return EVENTS.find((x) => x.value === value) || { label:value, group:"Khác", icon:"⚡", description:"" }; }
-function actionMeta(value) { return ACTIONS.find((x) => x.value === value) || { label:value, icon:"•", available:true }; }
+function actionMeta(value) { return ACTIONS.find((x) => x.value === value) || { label:value, icon:"•" }; }
 function delayLabel(minutes) {
   const value = Number(minutes || 0);
   if (!value) return "Ngay lập tức";
@@ -85,6 +86,7 @@ function delayLabel(minutes) {
 }
 
 const EMPTY_FORM = { id:"", name:"", event_type:"lead_assigned", action_type:"create_task", delay_minutes:0, enabled:true };
+const EMPTY_CHANNELS = { database:false,lead_webhook:false,email:false,zalo:false,facebook_verify:false,providers:{} };
 
 export function AutomationModule({ data, full, fullMutate }) {
   const rules = full.automations || [];
@@ -94,10 +96,15 @@ export function AutomationModule({ data, full, fullMutate }) {
   const [form,setForm] = useState(EMPTY_FORM);
   const [saving,setSaving] = useState(false);
   const [filter,setFilter] = useState("all");
+  const [channels,setChannels] = useState(EMPTY_CHANNELS);
+
+  useEffect(()=>{let stopped=false;integrationStatus().then(out=>{if(!stopped)setChannels({...EMPTY_CHANNELS,...out})}).catch(()=>{});return()=>{stopped=true}},[]);
 
   const enabledCount = rules.filter((r) => r.enabled).length;
   const visibleRules = useMemo(() => rules.filter((r) => filter === "all" || eventMeta(r.event_type).group === filter), [rules,filter]);
   const groups = [...new Set(EVENTS.map((e) => e.group))];
+  const externalReady = [channels.lead_webhook,channels.email,channels.zalo].filter(Boolean).length;
+  const actionReady = (action) => !action.channel || Boolean(channels[action.channel]);
 
   async function saveRule(e) {
     e.preventDefault();
@@ -158,25 +165,25 @@ export function AutomationModule({ data, full, fullMutate }) {
       <i>→</i>
       <div><span>3</span><b>Hành động</b><small>Tạo việc, thông báo, đổi trạng thái, gắn nhãn.</small></div>
       <i>→</i>
-      <div><span>4</span><b>Theo dõi</b><small>Bật/tắt kịch bản và kiểm soát quy trình tập trung.</small></div>
+      <div><span>4</span><b>Theo dõi</b><small>Engine server thực thi và sweep khách tới hạn khi CRM đang hoạt động.</small></div>
     </div>
 
     <div className="automation-metrics">
       <div><span>Kịch bản đã tạo</span><strong>{rules.length}</strong></div>
       <div><span>Đang bật cấu hình</span><strong>{enabledCount}</strong></div>
       <div><span>Mẫu chuẩn Thiên Phúc</span><strong>{TEMPLATES.length}</strong></div>
-      <div><span>Kênh ngoài CRM</span><strong className="automation-muted">Chưa kết nối</strong><small>Email · Zalo/ZNS</small></div>
+      <div><span>Kênh ngoài CRM</span><strong className={externalReady?"":"automation-muted"}>{externalReady}/3 sẵn sàng</strong><small>Lead webhook · Email · Zalo</small></div>
     </div>
 
     <div className="automation-engine-note">
-      <b>Trạng thái hiện tại</b>
-      <span>CRM đã chuẩn hóa và lưu cấu hình kịch bản. Các hành động Email/Zalo cần kết nối kênh; engine backend chạy tự động theo sự kiện sẽ được kích hoạt riêng để tránh hiểu nhầm “bật” là đã gửi thật.</span>
+      <b>Automation engine</b>
+      <span>{channels.database?"Engine server đã kết nối database và có thể thực thi rule thật.":"Engine đã được triển khai nhưng server chưa thấy DATABASE_URL; các rule nội bộ qua RPC vẫn hoạt động, cần cấu hình database server để bật webhook/engine đầy đủ."}</span>
     </div>
 
     <div className="automation-tabs">
       <button className={tab === "templates" ? "active" : ""} onClick={() => setTab("templates")}>Mẫu chuẩn</button>
       <button className={tab === "rules" ? "active" : ""} onClick={() => setTab("rules")}>Kịch bản của CRM <em>{rules.length}</em></button>
-      <button className={tab === "channels" ? "active" : ""} onClick={() => setTab("channels")}>Kênh gửi</button>
+      <button className={tab === "channels" ? "active" : ""} onClick={() => setTab("channels")}>Kênh & Lead intake</button>
     </div>
 
     {tab === "templates" && <div className="automation-template-grid">
@@ -219,10 +226,11 @@ export function AutomationModule({ data, full, fullMutate }) {
     </>}
 
     {tab === "channels" && <div className="automation-channel-grid">
-      <article className="suite-panel ready"><div>♢</div><h3>Thông báo trong CRM</h3><p>Thông báo nội bộ cho nhân viên ngay trong hệ thống.</p><span>Sẵn sàng cấu hình</span></article>
-      <article className="suite-panel ready"><div>✓</div><h3>Công việc CRM</h3><p>Tự tạo nhiệm vụ để Sale không bỏ quên khách.</p><span>Sẵn sàng cấu hình</span></article>
-      <article className="suite-panel pending"><div>@</div><h3>Email</h3><p>Cần kết nối tài khoản email doanh nghiệp trước khi gửi tự động.</p><span>Chưa kết nối</span></article>
-      <article className="suite-panel pending"><div>Z</div><h3>Zalo / ZNS</h3><p>Cần kết nối Zalo OA/ZNS và mẫu tin được phê duyệt.</p><span>Chưa kết nối</span></article>
+      <article className={`suite-panel ${channels.lead_webhook?"ready":"pending"}`}><div>⇩</div><h3>Lead đa nguồn</h3><p>Webhook chuẩn hóa Website · Facebook · TikTok · Zalo · Google · Hotline vào một luồng chống trùng.</p><span>{channels.lead_webhook?"Đã bật webhook":"Chờ cấu hình secret"}</span></article>
+      <article className="suite-panel ready"><div>♢</div><h3>Thông báo trong CRM</h3><p>Engine tạo thông báo nội bộ cho nhân viên theo sự kiện.</p><span>Đang hoạt động</span></article>
+      <article className="suite-panel ready"><div>✓</div><h3>Công việc CRM</h3><p>Tự tạo nhiệm vụ và deadline để Sale không bỏ quên khách.</p><span>Đang hoạt động</span></article>
+      <article className={`suite-panel ${channels.email?"ready":"pending"}`}><div>@</div><h3>Email</h3><p>Adapter gửi email tự động qua tài khoản doanh nghiệp đã được cấu hình.</p><span>{channels.email?"Đã kết nối":"Chờ RESEND_API_KEY"}</span></article>
+      <article className={`suite-panel ${channels.zalo?"ready":"pending"}`}><div>Z</div><h3>Zalo / ZNS</h3><p>Cầu nối server gửi dữ liệu sang Zalo OA/ZNS bridge và template được phê duyệt.</p><span>{channels.zalo?"Đã kết nối bridge":"Chờ Zalo bridge"}</span></article>
     </div>}
 
     {formOpen && <div className="automation-modal-overlay" onMouseDown={(e) => e.target === e.currentTarget && setFormOpen(false)}>
@@ -231,7 +239,7 @@ export function AutomationModule({ data, full, fullMutate }) {
         <form onSubmit={saveRule}>
           <label>Tên kịch bản<input autoFocus required value={form.name} onChange={(e) => setForm({...form,name:e.target.value})} placeholder="Ví dụ: Đến hạn chăm sóc → nhắc Sale"/></label>
           <label>Khi nào chạy?<select value={form.event_type} onChange={(e) => setForm({...form,event_type:e.target.value})}>{EVENTS.map((e) => <option key={e.value} value={e.value}>{e.label}</option>)}</select><small>{eventMeta(form.event_type).description}</small></label>
-          <label>CRM sẽ làm gì?<select value={form.action_type} onChange={(e) => setForm({...form,action_type:e.target.value})}>{ACTIONS.map((a) => <option key={a.value} value={a.value} disabled={!a.available}>{a.label}{!a.available ? " — cần kết nối" : ""}</option>)}</select></label>
+          <label>CRM sẽ làm gì?<select value={form.action_type} onChange={(e) => setForm({...form,action_type:e.target.value})}>{ACTIONS.map((a) => <option key={a.value} value={a.value} disabled={!actionReady(a)}>{a.label}{!actionReady(a) ? " — cần kết nối" : ""}</option>)}</select></label>
           <label>Thời gian chờ<select value={form.delay_minutes} onChange={(e) => setForm({...form,delay_minutes:Number(e.target.value)})}><option value={0}>Ngay lập tức</option><option value={10}>10 phút</option><option value={30}>30 phút</option><option value={60}>1 giờ</option><option value={180}>3 giờ</option><option value={1440}>1 ngày</option><option value={2880}>2 ngày</option><option value={4320}>3 ngày</option></select></label>
           <label className="automation-checkbox"><input type="checkbox" checked={form.enabled} onChange={(e) => setForm({...form,enabled:e.target.checked})}/><span>Bật kịch bản sau khi lưu</span></label>
           <footer><button type="button" className="suite-btn" onClick={() => setFormOpen(false)}>Hủy</button><button className="suite-btn primary" disabled={saving}>{saving ? "Đang lưu..." : "Lưu kịch bản"}</button></footer>
