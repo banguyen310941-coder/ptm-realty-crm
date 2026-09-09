@@ -1,5 +1,4 @@
-import { bearerToken, sessionUserFromToken } from "@/lib/server-auth";
-import { runAutomationEvent } from "@/lib/automation-engine";
+import { bearerToken, serverRpc } from "@/lib/server-data-api";
 
 export const dynamic = "force-dynamic";
 
@@ -11,8 +10,7 @@ const ALLOWED_EVENTS = new Set([
 export async function POST(request) {
   try {
     const token = bearerToken(request);
-    const user = await sessionUserFromToken(token);
-    if (!user) return Response.json({ ok:false, error:"UNAUTHENTICATED" }, { status:401 });
+    if (!token) return Response.json({ ok:false, error:"UNAUTHENTICATED" }, { status:401 });
 
     const body = await request.json().catch(() => ({}));
     const eventType = String(body.event_type || "");
@@ -20,15 +18,18 @@ export async function POST(request) {
       return Response.json({ ok:false, error:"INVALID_EVENT" }, { status:400 });
     }
 
-    const result = await runAutomationEvent({
-      eventType,
-      leadId:body.lead_id || null,
-      actorId:user.id,
-      ownerId:body.owner_id || null,
-      payload:body.payload || body
+    const result = await serverRpc("crm_automation_event_v1", {
+      p_token:token,
+      p_event_type:eventType,
+      p_lead_id:body.lead_id || null,
+      p_owner_id:body.owner_id || null,
+      p_payload:body.payload || body || {}
     });
 
-    return Response.json(result, { status:200, headers:{ "Cache-Control":"no-store" } });
+    if (!result?.ok && result?.code === "UNAUTHENTICATED") {
+      return Response.json(result, { status:401, headers:{ "Cache-Control":"no-store" } });
+    }
+    return Response.json(result || { ok:false, error:"AUTOMATION_EVENT_FAILED" }, { status:result?.ok ? 200 : 400, headers:{ "Cache-Control":"no-store" } });
   } catch (error) {
     return Response.json({ ok:false, error:error?.message || "AUTOMATION_EVENT_FAILED" }, { status:500 });
   }
