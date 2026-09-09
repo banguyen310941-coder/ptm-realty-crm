@@ -1,12 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createClient } from "@neondatabase/neon-js";
+import { client, SESSION_KEY } from "@/lib/crm-client";
 import { roleLabel } from "@/lib/rbac";
-
-const DB_URL = "https://ep-dawn-feather-az232vpl.c-3.ap-southeast-1.aws.neon.tech/neondb";
-const client = createClient(DB_URL, { auth: { allowAnonymous: true } });
-const SESSION_KEY = "ptm_crm_session_v3";
 
 function unwrap(data) { return Array.isArray(data) ? data[0] : data; }
 
