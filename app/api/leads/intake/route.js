@@ -1,6 +1,4 @@
-import { safeSecretEqual, bearerToken } from "@/lib/server-auth";
-import { query } from "@/lib/db";
-import { runAutomationEvent } from "@/lib/automation-engine";
+import { bearerToken, serverRpc } from "@/lib/server-data-api";
 
 export const dynamic = "force-dynamic";
 
@@ -14,12 +12,6 @@ function text(value) {
   if (Array.isArray(value)) return value.map(text).filter(Boolean).join(", ");
   if (typeof value === "object") return "";
   return String(value).trim();
-}
-
-function phoneKey(value) {
-  const digits = text(value).replace(/\D/g, "");
-  if (/^84\d{9}$/.test(digits)) return `0${digits.slice(2)}`;
-  return digits;
 }
 
 function objectFromFieldData(fields) {
@@ -83,109 +75,52 @@ function normalize(body, sourceHint) {
   };
 }
 
-function authorized(request, url) {
-  const expected = process.env.LEAD_WEBHOOK_SECRET;
-  if (!expected) return false;
-  const supplied = request.headers.get("x-ptm-webhook-secret") || bearerToken(request) || url.searchParams.get("token") || "";
-  return safeSecretEqual(supplied, expected);
+function suppliedSecret(request, url) {
+  return request.headers.get("x-ptm-webhook-secret") || bearerToken(request) || url.searchParams.get("token") || "";
 }
 
 export async function GET(request) {
   const url = new URL(request.url);
   const verifyToken = url.searchParams.get("hub.verify_token") || url.searchParams.get("verify_token") || "";
   const challenge = url.searchParams.get("hub.challenge") || url.searchParams.get("challenge") || "";
-  const expected = process.env.META_WEBHOOK_VERIFY_TOKEN || process.env.LEAD_WEBHOOK_SECRET || "";
-  if (expected && challenge && safeSecretEqual(verifyToken, expected)) {
-    return new Response(challenge, { status:200, headers:{ "Content-Type":"text/plain", "Cache-Control":"no-store" } });
+
+  try {
+    if (challenge && verifyToken) {
+      const verified = await serverRpc("crm_webhook_verify_v1", { p_secret:verifyToken, p_kind:"meta" });
+      if (verified === true) return new Response(challenge, { status:200, headers:{ "Content-Type":"text/plain", "Cache-Control":"no-store" } });
+      return Response.json({ ok:false, error:"INVALID_VERIFY_TOKEN" }, { status:403, headers:{ "Cache-Control":"no-store" } });
+    }
+
+    const status = await serverRpc("crm_integration_status_v1", {});
+    return Response.json({ ok:true, endpoint:"PTM lead intake", configured:Boolean(status?.lead_webhook) }, { status:200, headers:{ "Cache-Control":"no-store" } });
+  } catch (error) {
+    return Response.json({ ok:false, error:error?.message || "LEAD_INTAKE_STATUS_FAILED" }, { status:503, headers:{ "Cache-Control":"no-store" } });
   }
-  return Response.json({ ok:true, endpoint:"PTM lead intake", configured:Boolean(process.env.LEAD_WEBHOOK_SECRET) }, { status:200, headers:{ "Cache-Control":"no-store" } });
 }
 
 export async function POST(request) {
   const url = new URL(request.url);
   try {
-    if (!process.env.DATABASE_URL) {
-      return Response.json({ ok:false, error:"DATABASE_URL_NOT_CONFIGURED" }, { status:503 });
-    }
-    if (!process.env.LEAD_WEBHOOK_SECRET) {
-      return Response.json({ ok:false, error:"LEAD_WEBHOOK_NOT_CONFIGURED" }, { status:503 });
-    }
-    if (!authorized(request, url)) {
-      return Response.json({ ok:false, error:"INVALID_WEBHOOK_SECRET" }, { status:401 });
-    }
+    const secret = suppliedSecret(request, url);
+    if (!secret) return Response.json({ ok:false, error:"WEBHOOK_SECRET_REQUIRED" }, { status:401 });
 
     const body = await request.json().catch(() => ({}));
     const lead = normalize(body, url.searchParams.get("source") || "");
-    const normalizedPhone = phoneKey(lead.phone);
-    if (!normalizedPhone) {
+    if (!lead.phone) {
       const directId = first(body?.leadgen_id, body?.entry?.[0]?.changes?.[0]?.value?.leadgen_id);
-      if (directId) {
-        return Response.json({ ok:false, accepted:false, error:"LEAD_DETAILS_REQUIRED", external_lead_id:directId }, { status:202 });
-      }
+      if (directId) return Response.json({ ok:false, accepted:false, error:"LEAD_DETAILS_REQUIRED", external_lead_id:directId }, { status:202 });
       return Response.json({ ok:false, error:"PHONE_REQUIRED" }, { status:400 });
     }
 
-    const existing = await query(
-      `SELECT id,owner_id,current_offer_id
-         FROM public.leads
-        WHERE (CASE
-                 WHEN regexp_replace(phone,'\\D','','g') ~ '^84[0-9]{9}$'
-                   THEN '0' || substr(regexp_replace(phone,'\\D','','g'),3)
-                 ELSE regexp_replace(phone,'\\D','','g')
-               END)=$1
-           OR ($2<>'' AND lower(trim(coalesce(email,'')))=lower(trim($2)))
-        LIMIT 1`,
-      [normalizedPhone, lead.email || ""]
-    );
-
-    let row = existing?.[0] || null;
-    let duplicate = Boolean(row);
-    if (row) {
-      const updated = await query(
-        `UPDATE public.leads
-            SET email=coalesce(email,nullif($2,'')),
-                source=CASE WHEN source='Khác' THEN $3 ELSE source END,
-                need=coalesce(need,nullif($4,'')),
-                budget=CASE WHEN budget=0 THEN $5::numeric ELSE budget END,
-                project=coalesce(project,nullif($6,'')),
-                notes=coalesce(notes,nullif($7,'')),
-                profile=coalesce(profile,'{}'::jsonb) || $8::jsonb,
-                updated_at=now()
-          WHERE id=$1::uuid
-          RETURNING id,owner_id,current_offer_id`,
-        [row.id, lead.email || "", lead.source, lead.need || "", lead.budget, lead.project || "", lead.notes || "", JSON.stringify(lead.profile)]
-      );
-      row = updated?.[0] || row;
-    } else {
-      const inserted = await query(
-        `INSERT INTO public.leads(name,phone,email,source,need,budget,status,project,owner_id,notes,profile)
-         VALUES($1,$2,nullif($3,''),$4,nullif($5,''),$6,'new',nullif($7,''),NULL,nullif($8,''),$9::jsonb)
-         RETURNING id`,
-        [lead.name || `Khách ${normalizedPhone.slice(-4)}`, lead.phone, lead.email || "", lead.source, lead.need || "", lead.budget, lead.project || "", lead.notes || "", JSON.stringify(lead.profile)]
-      );
-      const createdId = inserted?.[0]?.id;
-      const fresh = await query(`SELECT id,owner_id,current_offer_id FROM public.leads WHERE id=$1::uuid LIMIT 1`, [createdId]);
-      row = fresh?.[0] || { id:createdId, owner_id:null, current_offer_id:null };
-
-      await runAutomationEvent({ eventType:"lead_created", leadId:row.id, ownerId:row.owner_id || null, payload:{ source:lead.source } });
-      if (row.owner_id) {
-        await runAutomationEvent({ eventType:"lead_assigned", leadId:row.id, ownerId:row.owner_id, payload:{ source:lead.source } });
-      }
+    const result = await serverRpc("crm_lead_intake_v1", { p_secret:secret, p_lead:lead });
+    if (!result?.ok) {
+      const status = result?.error === "INVALID_WEBHOOK_SECRET" ? 401 : result?.error === "PHONE_REQUIRED" ? 400 : 400;
+      return Response.json(result, { status, headers:{ "Cache-Control":"no-store" } });
     }
-
-    return Response.json({
-      ok:true,
-      lead_id:row?.id || null,
-      duplicate,
-      source:lead.source,
-      assigned:Boolean(row?.owner_id),
-      offer_pending:Boolean(row?.current_offer_id)
-    }, { status:duplicate ? 200 : 201, headers:{ "Cache-Control":"no-store" } });
+    return Response.json(result, { status:result.duplicate ? 200 : 201, headers:{ "Cache-Control":"no-store" } });
   } catch (error) {
     const message = error?.message || "LEAD_INTAKE_FAILED";
-    if (/duplicate key|unique constraint/i.test(message)) {
-      return Response.json({ ok:false, error:"DUPLICATE_LEAD" }, { status:409 });
-    }
+    if (/duplicate key|unique constraint/i.test(message)) return Response.json({ ok:false, error:"DUPLICATE_LEAD" }, { status:409 });
     return Response.json({ ok:false, error:message }, { status:500 });
   }
 }
