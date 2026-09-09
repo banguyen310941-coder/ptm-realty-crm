@@ -8,7 +8,7 @@
     "start": "next start"
   },
   "dependencies": {
-    "@neondatabase/postgrest-js": "0.2.0-beta",
+    "@neondatabase/neon-js": "0.7.0-beta",
     "next": "^16.0.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
