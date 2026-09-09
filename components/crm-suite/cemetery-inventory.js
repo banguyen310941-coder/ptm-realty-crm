@@ -18,7 +18,7 @@ export function CemeteryInventoryModule({cemeteryAction,permissions}){
 
   const loadSummary=useCallback(async()=>{const [out,hold,sold]=await Promise.all([cemeteryAction("summary",{}),cemeteryAction("search",{sales_status:"hold",page:1,page_size:1}),cemeteryAction("search",{sales_status:"sold",page:1,page_size:1})]);setSummary({...out.summary,hold:Number(hold.total||0),sold:Number(sold.total||0)})},[cemeteryAction]);
   const loadFacets=useCallback(async(zone="",subzone="")=>{const out=await cemeteryAction("facets",{zone,subzone});setFacets({zones:out.zones||[],subzones:out.subzones||[],rows:out.rows||[],orientations:out.orientations||[],grave_classes:out.grave_classes||[],sale_modes:out.sale_modes||[]})},[cemeteryAction]);
-  const search=useCallback(async(nextPage=1,nextFilters=applied)=>{setLoading(true);setError("");try{const out=await cemeteryAction("search",{...nextFilters,page:nextPage,page_size:60});setRows(out.rows||[]);setTotal(Number(out.total||0));setPage(Number(out.page||nextPage));setPages(Math.max(Number(out.pages||1),1))}catch(e){setError(e.message)}finally{setLoading(false)}},[cemeteryAction,applied]);
+  const search=useCallback(async(nextPage=1,nextFilters=EMPTY_FILTER)=>{setLoading(true);setError("");try{const out=await cemeteryAction("search",{...nextFilters,page:nextPage,page_size:60});setRows(out.rows||[]);setTotal(Number(out.total||0));setPage(Number(out.page||nextPage));setPages(Math.max(Number(out.pages||1),1))}catch(e){setError(e.message)}finally{setLoading(false)}},[cemeteryAction]);
 
   useEffect(()=>{(async()=>{setLoading(true);try{await Promise.all([loadSummary(),loadFacets(),search(1,EMPTY_FILTER)])}catch(e){setError(e.message)}finally{setLoading(false)}})()},[loadSummary,loadFacets,search]);
 
