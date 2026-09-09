@@ -1,6 +1,7 @@
 import "./enterprise.css";
 import "./customer-form.css";
 import "./customer-wave.css";
+import "./customer-command-center.css";
 import "./customer-quick.css";
 import "./finance.css";
 import "./inventory-wave2.css";
