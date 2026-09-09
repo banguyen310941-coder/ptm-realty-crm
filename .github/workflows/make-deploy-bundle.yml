@@ -38,7 +38,7 @@ jobs:
             jsconfig.json \
             next.config.mjs \
             vercel.json
-          base64 -w 0 deploy-bundle.tgz > deploy-bundle.b64
+          base64 -w 4000 deploy-bundle.tgz > deploy-bundle.b64
           rm deploy-bundle.tgz
 
       - name: Commit bundle to temporary branch
