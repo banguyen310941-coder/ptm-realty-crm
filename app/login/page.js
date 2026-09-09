@@ -1,2 +1,5 @@
-import CRMApp from "@/components/crm-app";
-export default function LoginPage(){ return <CRMApp/>; }
+import { redirect } from "next/navigation";
+
+export default function LegacyLoginPage() {
+  redirect("/");
+}
