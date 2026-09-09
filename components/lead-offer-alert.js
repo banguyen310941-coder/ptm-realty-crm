@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@neondatabase/neon-js";
+import { automationEvent } from "@/lib/crm-client";
 
 const DB_URL = "https://ep-dawn-feather-az232vpl.c-3.ap-southeast-1.aws.neon.tech/neondb";
 const client = createClient(DB_URL, { auth: { allowAnonymous: true } });
@@ -153,6 +154,7 @@ export default function LeadOfferAlert() {
     try {
       await enableAudio();
       await call("crm_accept_lead_offer", { p_token: session.token, p_offer_id: active.offer_id });
+      await automationEvent("lead_accepted", { lead_id:active.lead_id, owner_id:session.user?.id || null, payload:{ offer_id:active.offer_id } }).catch(() => {});
       announcedRef.current.delete(active.offer_id);
       setOffers((rows) => rows.filter((x) => x.offer_id !== active.offer_id));
       window.dispatchEvent(new Event("ptm-crm-refresh"));
