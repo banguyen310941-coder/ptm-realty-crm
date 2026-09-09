@@ -124,6 +124,7 @@ export default function AttendanceLauncher() {
   if (!session) return null;
   const attendance = status?.attendance;
   const isSale = session.user?.role === "sale";
+  const outsideHours = status?.period === "evening";
 
   return <>
     <button className={`attendance-fab ${status?.eligible_for_leads ? "eligible" : ""}`} onClick={() => setOpen(true)}>
@@ -132,16 +133,18 @@ export default function AttendanceLauncher() {
     {open && <div className="attendance-overlay" onMouseDown={(e) => e.target === e.currentTarget && setOpen(false)}>
       <div className="attendance-card">
         <div className="attendance-head">
-          <div><span className="eyebrow">Nhân sự & phân lead</span><h2>Điểm danh</h2><p>Giờ hành chính: 08:30 - 17:30. Sau 17:30, Sale vẫn nhận lead nếu chưa check-out.</p></div>
+          <div><span className="eyebrow">Nhân sự & phân lead</span><h2>Điểm danh</h2><p>Trong giờ 08:30 - 17:30, Sale cần điểm danh hợp lệ. Ngoài giờ, toàn bộ Sale đang active được chia lead đều và vẫn có 10 phút để nhận.</p></div>
           <button className="attendance-close" onClick={() => setOpen(false)}>×</button>
         </div>
 
         {error && <div className="alert">{error}</div>}
         {status && <div className="attendance-status-grid">
           <div><span>Trạng thái</span><b>{attendance ? "Đã điểm danh" : "Chưa điểm danh"}</b></div>
-          <div><span>Thời gian</span><b>{status.period === "day" ? "08:30 - 17:30" : "Ngoài giờ"}</b></div>
+          <div><span>Thời gian</span><b>{outsideHours ? "Ngoài giờ" : "08:30 - 17:30"}</b></div>
           <div><span>Nhận lead</span><b>{isSale ? (status.eligible_for_leads ? "Đủ điều kiện" : "Chưa đủ điều kiện") : "Không áp dụng"}</b></div>
         </div>}
+
+        {outsideHours && isSale && <div className="suite-system-banner">Ngoài giờ: bạn vẫn nằm trong vòng chia lead dù chưa điểm danh hoặc đã check-out. Mỗi lead giữ nguyên thời hạn nhận 10 phút.</div>}
 
         {!attendance ? <div className="attendance-form">
           <label>Địa điểm làm việc<select value={mode} onChange={(e) => setMode(e.target.value)}><option value="office">Tại văn phòng</option><option value="client_visit">Ra ngoài gặp khách</option></select></label>
@@ -154,12 +157,12 @@ export default function AttendanceLauncher() {
           <button className="btn primary wide" onClick={checkIn} disabled={busy}>{busy ? "Đang xử lý..." : "Điểm danh vào ca"}</button>
         </div> : <div className="attendance-current">
           <p><b>{attendance.work_mode === "client_visit" ? "Đang gặp khách bên ngoài" : "Đang làm tại văn phòng"}</b></p>
-          <p>{attendance.has_photo ? "Đã có ảnh xác thực · " : ""}Sale sẽ tiếp tục nằm trong vòng nhận lead cho tới khi check-out.</p>
+          <p>{attendance.has_photo ? "Đã có ảnh xác thực · " : ""}{outsideHours ? "Ngoài giờ hệ thống chia lead đều cho mọi Sale active, không phụ thuộc check-out." : "Trong giờ, điểm danh này giúp Sale nằm trong vòng nhận lead."}</p>
           <button className="btn ghost wide" onClick={checkOut} disabled={busy}>Kết thúc ca / Check-out</button>
         </div>}
 
         {["admin", "ceo", "manager"].includes(session.user?.role) && <div className="attendance-team">
-          <div className="panel-head"><div><h3>Điểm danh toàn công ty</h3><p>Sale chỉ được nhận lead khi đang có ca điểm danh hợp lệ.</p></div><button className="text-link" onClick={refresh}>Làm mới</button></div>
+          <div className="panel-head"><div><h3>Điểm danh toàn công ty</h3><p>{outsideHours ? "Ngoài giờ: mọi Sale active đều đủ điều kiện nhận lead và được chia đều." : "Trong giờ: Sale chỉ nhận lead khi có điểm danh hợp lệ."}</p></div><button className="text-link" onClick={refresh}>Làm mới</button></div>
           <div className="table-wrap"><table><thead><tr><th>Nhân viên</th><th>Vai trò</th><th>Điểm danh</th><th>Nhận lead</th></tr></thead><tbody>
             {team.map((u) => <tr key={u.id}><td><b>{u.name}</b>{u.client_name && <small>Gặp: {u.client_name}</small>}</td><td>{roleLabel(u.role)}</td><td>{u.check_in_at ? (u.work_mode === "client_visit" ? `Gặp khách${u.has_photo ? " · Có ảnh" : ""}` : "Văn phòng") : "Chưa vào ca"}</td><td><span className={`badge ${u.can_receive_lead ? "status-deal" : "status-lost"}`}>{u.can_receive_lead ? "Đủ điều kiện" : "Không"}</span></td></tr>)}
           </tbody></table></div>
