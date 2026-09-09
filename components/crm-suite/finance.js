@@ -14,8 +14,9 @@ const EMPTY_CONTRACT={id:"",deal_id:"",lead_id:"",property_id:"",contract_type:"
 const EMPTY_PAYMENT={id:"",contract_id:"",deal_id:"",lead_id:"",payment_type:"installment",amount:"",due_date:"",paid_at:"",status:"due",reference:"",notes:""};
 const EMPTY_COMMISSION={id:"",deal_id:"",user_id:"",basis_amount:"",rate:"3",amount:"",status:"pending",notes:""};
 
-function localDate(){return new Date().toISOString().slice(0,10)}
-function localDateTime(){const d=new Date(Date.now()-new Date().getTimezoneOffset()*60000);return d.toISOString().slice(0,16)}
+function vietnamParts(){return Object.fromEntries(new Intl.DateTimeFormat("en-GB",{timeZone:"Asia/Ho_Chi_Minh",year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",hourCycle:"h23"}).formatToParts(new Date()).map(({type,value})=>[type,value]))}
+function localDate(){const p=vietnamParts();return `${p.year}-${p.month}-${p.day}`}
+function localDateTime(){const p=vietnamParts();return `${p.year}-${p.month}-${p.day}T${p.hour}:${p.minute}`}
 
 export function FinanceModule({ data, finance, financeReady, financeMutate }) {
   const role=data.user.role;
