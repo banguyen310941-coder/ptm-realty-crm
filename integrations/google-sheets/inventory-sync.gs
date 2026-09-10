@@ -159,7 +159,7 @@ function normalizeInventoryText_(value) {
 function inventoryStatusKey_(status) {
   const s = normalizeInventoryText_(status);
   if (s === "mo ban" || s === "available") return "a";
-  if (s === "giu cho" || s === "giu cho" || s === "hold" || s === "reserved") return "h";
+  if (s === "giu cho" || s === "hold" || s === "reserved") return "h";
   if (s === "dat coc" || s === "coc" || s === "deposit") return "d";
   if (s === "da ban" || s === "ban" || s === "sold") return "s";
   if (s === "khoa" || s === "locked" || s === "lock") return "l";
