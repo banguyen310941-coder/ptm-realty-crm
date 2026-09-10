@@ -2,8 +2,8 @@ import { bearerToken, serverRpc } from "@/lib/server-data-api";
 
 export const dynamic = "force-dynamic";
 
-function suppliedSecret(request, url) {
-  return request.headers.get("x-ptm-inventory-secret") || bearerToken(request) || url.searchParams.get("token") || "";
+function suppliedSecret(request) {
+  return request.headers.get("x-ptm-inventory-secret") || bearerToken(request) || "";
 }
 
 function noStore(status, body) {
@@ -15,15 +15,14 @@ export async function GET() {
     ok: true,
     endpoint: "PTM inventory sync",
     source: "BẢNG GIÁ-DỰ ÁN QUẢNG NINH",
-    max_rows: 500
+    max_rows: 500,
+    auth: "header-only"
   });
 }
 
 export async function POST(request) {
-  const url = new URL(request.url);
-
   try {
-    const secret = suppliedSecret(request, url);
+    const secret = suppliedSecret(request);
     if (!secret) return noStore(401, { ok: false, error: "WEBHOOK_SECRET_REQUIRED" });
 
     const body = await request.json().catch(() => ({}));
