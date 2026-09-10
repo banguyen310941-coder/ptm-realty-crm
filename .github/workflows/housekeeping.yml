@@ -1,0 +1,26 @@
+name: CRM Housekeeping
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: crm-housekeeping
+  cancel-in-progress: false
+
+jobs:
+  sweep:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Run CRM housekeeping
+        run: |
+          set -euo pipefail
+          response="$(curl --fail --silent --show-error \
+            --retry 2 \
+            --retry-delay 2 \
+            --max-time 30 \
+            -H 'User-Agent: ptm-crm-housekeeping/1.0' \
+            https://ptm-realty-crm.vercel.app/api/automation/cron)"
+          echo "$response"
