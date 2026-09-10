@@ -10,25 +10,34 @@ const PTM_INVENTORY = Object.freeze({
 
 /**
  * Run once after adding Script Property PTM_INVENTORY_WEBHOOK_SECRET.
- * Seeds the current Sheet snapshot without changing CRM, then installs a 5-minute trigger.
+ * Reconciles the complete current Sheet state into CRM first, then stores the
+ * snapshot and installs a 5-minute trigger. The trigger is only created after
+ * the initial full sync succeeds, so an old CRM state cannot be silently kept.
  */
 function setupPtmInventorySync() {
-  requireInventorySecret_();
+  const secret = requireInventorySecret_();
   const current = collectPtmInventory_();
+  const rows = Object.keys(current.rowsByCode).map(function(code) { return current.rowsByCode[code]; });
+  const result = postInventoryRows_(secret, rows);
+
   saveInventorySnapshot_(current.snapshot);
   removeInventoryTriggers_();
   ScriptApp.newTrigger(PTM_INVENTORY.TRIGGER_HANDLER).timeBased().everyMinutes(5).create();
-  return {
+
+  return Object.assign({
     ok: true,
-    seeded: Object.keys(current.snapshot).length,
+    scanned: rows.length,
+    sent: rows.length,
     sheets: current.sheets,
     duplicates: current.duplicates.length,
+    initial_full_sync: true,
     trigger: "every 5 minutes"
-  };
+  }, result);
 }
 
 /**
  * Called by the time-driven trigger. Only changed product statuses are posted to CRM.
+ * The snapshot is saved only after every batch succeeds.
  */
 function syncPtmInventory() {
   const secret = requireInventorySecret_();
