@@ -1,3 +1,9 @@
+import { bearerToken, serverRpc } from "@/lib/server-data-api";
+import { metaPageConfigs } from "@/lib/facebook-meta";
+
+export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
+
 function mergeRuntimePages(result) {
   if (!result?.ok) return result;
   const configured = metaPageConfigs().map((page) => ({
@@ -11,18 +17,11 @@ function mergeRuntimePages(result) {
   const existing = Array.isArray(result?.pages) ? result.pages : [];
   const map = new Map(existing.map((page) => [String(page.page_id),page]));
   for (const page of configured) {
-    const current=map.get(String(page.page_id));
+    const current = map.get(String(page.page_id));
     map.set(String(page.page_id),current ? { ...page,...current,page_name:current.page_name || page.page_name } : page);
   }
-  result.pages=[...map.values()];
-  return result;
+  return { ...result,pages:[...map.values()] };
 }
-
-import { bearerToken, serverRpc } from "@/lib/server-data-api";
-import { metaPageConfigs } from "@/lib/facebook-meta";
-
-export const dynamic = "force-dynamic";
-export const runtime = "nodejs";
 
 function statusFor(result) {
   if (result?.ok) return 200;
@@ -31,6 +30,12 @@ function statusFor(result) {
   if (result?.code === "NOT_FOUND") return 404;
   if (result?.code === "BAD_REQUEST") return 400;
   return 400;
+}
+
+function infrastructureStatus(error) {
+  const code = String(error?.code || "");
+  const message = String(error?.message || "");
+  return /PGRST202|schema cache|RPC_ERROR|fetch failed|network|connection|timeout|temporar|503|gateway/i.test(code + " " + message) ? 503 : 500;
 }
 
 export async function GET(request) {
@@ -43,12 +48,15 @@ export async function GET(request) {
       p_action:"bootstrap",
       p_payload:{}
     });
-    mergeRuntimePages(result);
-    return Response.json(result, { status:statusFor(result), headers:{ "Cache-Control":"no-store" } });
+    const response = mergeRuntimePages(result);
+    return Response.json(response, { status:statusFor(response), headers:{ "Cache-Control":"no-store" } });
   } catch (error) {
-    return Response.json({ ok:false, error:error?.message || "FACEBOOK_OPS_FAILED" }, {
-      status:500, headers:{ "Cache-Control":"no-store" }
-    });
+    const status = infrastructureStatus(error);
+    console.error("[facebook-ops] bootstrap failed", { code:error?.code || null,error:error?.message || "FACEBOOK_OPS_FAILED",status });
+    return Response.json(
+      { ok:false, error:status === 503 ? "Dịch vụ dữ liệu đang đồng bộ, vui lòng thử lại." : (error?.message || "FACEBOOK_OPS_FAILED"), code:status === 503 ? "DATA_API_TEMPORARY" : "FACEBOOK_OPS_FAILED" },
+      { status, headers:{ "Cache-Control":"no-store", "Retry-After":status === 503 ? "3" : "0" } }
+    );
   }
 }
 
@@ -68,8 +76,11 @@ export async function POST(request) {
     });
     return Response.json(result, { status:statusFor(result), headers:{ "Cache-Control":"no-store" } });
   } catch (error) {
-    return Response.json({ ok:false, error:error?.message || "FACEBOOK_OPS_FAILED" }, {
-      status:500, headers:{ "Cache-Control":"no-store" }
-    });
+    const status = infrastructureStatus(error);
+    console.error("[facebook-ops] action failed", { action,code:error?.code || null,error:error?.message || "FACEBOOK_OPS_FAILED",status });
+    return Response.json(
+      { ok:false, error:status === 503 ? "Dịch vụ dữ liệu đang đồng bộ, vui lòng thử lại." : (error?.message || "FACEBOOK_OPS_FAILED"), code:status === 503 ? "DATA_API_TEMPORARY" : "FACEBOOK_OPS_FAILED" },
+      { status, headers:{ "Cache-Control":"no-store", "Retry-After":status === 503 ? "3" : "0" } }
+    );
   }
 }
