@@ -35,36 +35,43 @@ function unwrap(body) {
   return { ...leadData, ...fieldData };
 }
 
-function parseBudgetValue(value) {
-  const raw = text(value);
-  if (!raw) return 0;
+function parseUnitNumber(token) {
+  let value=String(token || "").trim().replace(/\s+/g,"");
+  if (!value) return 0;
 
-  const folded = raw.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"");
-  const hasBillion = /(^|\s)(ty|billion|bn)(\s|$)/.test(folded);
-  const hasMillion = /(^|\s)(trieu|tr|million|mn)(\s|$)/.test(folded);
-  const multiplier = hasBillion ? 1e9 : hasMillion ? 1e6 : 1;
-
-  const match = folded.match(/[0-9][0-9.,\s]*/);
-  if (!match) return 0;
-
-  let token = match[0].trim().replace(/\s+/g,"");
-  if (multiplier > 1) {
-    const separators = [...token.matchAll(/[.,]/g)].map((m) => m.index);
-    if (separators.length) {
-      const last = separators[separators.length - 1];
-      const decimals = token.length - last - 1;
-      if (decimals > 0 && decimals <= 2) {
-        token = token.slice(0,last).replace(/[.,]/g,"") + "." + token.slice(last + 1).replace(/[.,]/g,"");
-      } else {
-        token = token.replace(/[.,]/g,"");
-      }
+  const separators=[...value.matchAll(/[.,]/g)].map((m)=>m.index);
+  if (separators.length) {
+    const last=separators[separators.length-1];
+    const decimals=value.length-last-1;
+    if (decimals>0 && decimals<=2) {
+      value=value.slice(0,last).replace(/[.,]/g,"")+"."+value.slice(last+1).replace(/[.,]/g,"");
+    } else {
+      value=value.replace(/[.,]/g,"");
     }
-    const n = Number(token);
-    return Number.isFinite(n) ? Math.round(n * multiplier) : 0;
   }
 
-  const digits = token.replace(/[^0-9]/g,"");
-  const n = Number(digits);
+  const n=Number(value);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function parseBudgetValue(value) {
+  const raw=text(value);
+  if (!raw) return 0;
+
+  const folded=raw.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"");
+  const billion=folded.match(/([0-9][0-9.,\s]*)\s*(?:ty|billion|bn)\b/);
+  const million=folded.match(/([0-9][0-9.,\s]*)\s*(?:trieu|tr|million|mn)\b/);
+
+  if (billion || million) {
+    const total=(billion ? parseUnitNumber(billion[1])*1e9 : 0)
+      +(million ? parseUnitNumber(million[1])*1e6 : 0);
+    return Number.isFinite(total) ? Math.round(total) : 0;
+  }
+
+  const match=folded.match(/[0-9][0-9.,\s]*/);
+  if (!match) return 0;
+  const digits=match[0].replace(/[^0-9]/g,"");
+  const n=Number(digits);
   return Number.isFinite(n) ? n : 0;
 }
 
