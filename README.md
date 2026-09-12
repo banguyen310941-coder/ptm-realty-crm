@@ -167,6 +167,7 @@ Dashboard quản lý tập trung các chỉ số và cảnh báo quan trọng:
 | --- | --- |
 | CEO/Giám đốc | Toàn bộ dữ liệu, báo cáo, duyệt/xóa nghiệp vụ quan trọng |
 | Admin | Quản trị dữ liệu và tài khoản |
+| Quản lý | Quyền điều hành tương đương cấp quản lý, không quản trị tài khoản |
 | Marketing | Lead, nguồn khách, chiến dịch, báo cáo marketing |
 | Sale | Khách được giao, công việc, cơ hội và giao dịch của mình |
 | Kế toán | Hợp đồng, thanh toán, công nợ, hoa hồng |
@@ -182,10 +183,15 @@ Kho mộ phần là dữ liệu sản phẩm thật và được giữ tách bi�
 - `GET /api/health` — database/auth readiness
 - `GET /api/integrations/status` — readiness của lead webhook, Meta Messenger, Email, Zalo
 - `POST /api/automation/event` — phát automation event từ phiên CRM hợp lệ
-- `POST /api/automation/run` — sweep automation từ phiên CRM hợp lệ
+- `POST /api/automation/run` — sweep automation từ phiên CRM hợp lệ; dùng khóa/rate-limit chung ở database
+- `GET /api/automation/cron` — route tương thích cũ, nay yêu cầu Bearer session hợp lệ và trả cảnh báo deprecated
 - `GET|POST /api/leads/intake` — verify/nhận lead đa nguồn
 - `GET|POST /api/facebook/webhook` — webhook Messenger
 - `GET|POST /api/facebook/inbox` — inbox Fanpage trong CRM
+- `GET|POST /api/facebook/automation` — quản lý kịch bản tự động
+- `GET|POST /api/facebook/ops` — cấu hình Fanpage, quick reply, nhãn và báo cáo chuyển đổi
+- `POST /api/facebook/ai-reply` — AI gợi ý bản nháp trả lời
+- `GET|POST /api/facebook/ai-suggest` — AI đề xuất kịch bản
 - `POST /api/facebook/send` — gửi tin Messenger từ CRM
 
 ## SQL versioned
@@ -214,7 +220,7 @@ npm run dev
 
 Sau đó mở `http://localhost:3000`.
 
-Phần giao diện CRM chính dùng Neon Data API giống production. Không thêm mật khẩu PostgreSQL vào source hoặc file Git-tracked.
+Phần giao diện CRM chính dùng Neon Data API giống production. Nên đặt `NEXT_PUBLIC_NEON_DATA_API_URL` riêng cho Production/Preview/Dev để preview không ghi nhầm vào production. Không thêm mật khẩu PostgreSQL vào source hoặc file Git-tracked.
 
 ## Quy tắc bảo mật
 
@@ -223,3 +229,5 @@ Phần giao diện CRM chính dùng Neon Data API giống production. Không th�
 3. Webhook secret chỉ lưu hash.
 4. Không xóa hoặc thay đổi dữ liệu sản phẩm thật khi xử lý dữ liệu demo.
 5. Mọi thay đổi production phải qua build/CI trước khi deploy.
+6. Login có rate-limit theo hash email; không hiển thị sẵn email Admin trên màn đăng nhập.
+7. RPC `SECURITY DEFINER` chỉ cấp EXECUTE cho role thực sự cần, không dựa vào quyền PUBLIC mặc định.
