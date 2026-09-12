@@ -50,19 +50,52 @@ export async function POST(request) {
     }
 
     const metaResponse = await sendMetaText(context.page_id, context.psid, text);
-    const logged = await serverRpc("crm_facebook_api_v1", {
-      p_token:token,
-      p_action:"log_outbound",
-      p_payload:{
-        conversation_id:conversationId,
-        text,
-        meta_message_id:metaResponse?.message_id || null,
-        meta_response:metaResponse || {}
-      }
-    });
 
-    if (!logged?.ok) {
-      return Response.json(logged, { status:resultStatus(logged), headers:{ "Cache-Control":"no-store" } });
+    // Meta has accepted the message. A later CRM logging error must not be exposed
+    // as a send failure, otherwise the Sale may press Send again and duplicate it.
+    try {
+      const logged = await serverRpc("crm_facebook_api_v1", {
+        p_token:token,
+        p_action:"log_outbound",
+        p_payload:{
+          conversation_id:conversationId,
+          text,
+          meta_message_id:metaResponse?.message_id || null,
+          meta_response:metaResponse || {}
+        }
+      });
+
+      if (!logged?.ok) {
+        console.error("[facebook-send] Meta sent but CRM log returned not-ok", {
+          conversation_id:conversationId,
+          message_id:metaResponse?.message_id || null,
+          code:logged?.code || null
+        });
+        return Response.json(
+          {
+            ok:true,
+            conversation_id:conversationId,
+            message_id:metaResponse?.message_id || null,
+            warning:"MESSAGE_SENT_LOG_PENDING"
+          },
+          { status:200, headers:{ "Cache-Control":"no-store" } }
+        );
+      }
+    } catch (logError) {
+      console.error("[facebook-send] Meta sent but CRM log failed", {
+        conversation_id:conversationId,
+        message_id:metaResponse?.message_id || null,
+        error:logError?.message || "LOG_FAILED"
+      });
+      return Response.json(
+        {
+          ok:true,
+          conversation_id:conversationId,
+          message_id:metaResponse?.message_id || null,
+          warning:"MESSAGE_SENT_LOG_PENDING"
+        },
+        { status:200, headers:{ "Cache-Control":"no-store" } }
+      );
     }
 
     return Response.json(
