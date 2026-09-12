@@ -315,10 +315,11 @@ BEGIN
     SELECT a.id
     FROM public.crm_facebook_auto_reply_attempts a
     JOIN public.crm_facebook_conversations c ON c.id=a.conversation_id
-    WHERE a.status='failed'
-      AND a.retryable=true
+    WHERE (
+        (a.status='failed' AND a.retryable=true AND coalesce(a.next_retry_at,now())<=now())
+        OR (a.status='claimed' AND a.last_attempt_at<=now()-interval '10 minutes')
+      )
       AND a.retry_count<3
-      AND coalesce(a.next_retry_at,now())<=now()
       AND c.last_inbound_at>=now()-interval '24 hours'
       AND NOT (c.automation_paused_until IS NOT NULL AND c.automation_paused_until>now())
     ORDER BY a.next_retry_at NULLS FIRST,a.last_attempt_at
@@ -471,7 +472,7 @@ SECURITY DEFINER
 SET search_path TO 'public','pg_temp'
 AS $function$
 DECLARE
-  v_uid uuid; v_role text; v_conv uuid; v_id uuid; v_rows jsonb; v_tags jsonb; v_pages jsonb; v_report jsonb;
+  v_uid uuid; v_role text; v_conv uuid; v_id uuid; v_rows jsonb; v_tags jsonb; v_pages jsonb; v_report jsonb; v_conv_tags jsonb;
   v_tag_ids jsonb; v_tag uuid; v_qr public.crm_facebook_quick_replies%ROWTYPE;
 BEGIN
   SELECT u.id,u.role INTO v_uid,v_role
@@ -487,6 +488,16 @@ BEGIN
     SELECT coalesce(jsonb_agg(to_jsonb(q) ORDER BY q.sort_order,q.title),'[]'::jsonb) INTO v_rows
     FROM public.crm_facebook_quick_replies q WHERE q.enabled=true;
     SELECT coalesce(jsonb_agg(to_jsonb(t) ORDER BY t.name),'[]'::jsonb) INTO v_tags FROM public.crm_tags t;
+    SELECT coalesce(jsonb_agg(jsonb_build_object(
+      'conversation_id',x.conversation_id,'tags',x.tags
+    )),'[]'::jsonb) INTO v_conv_tags
+    FROM (
+      SELECT ct.conversation_id,
+        coalesce(jsonb_agg(jsonb_build_object('id',t.id,'name',t.name,'color',t.color) ORDER BY t.name),'[]'::jsonb) tags
+      FROM public.crm_facebook_conversation_tags ct
+      JOIN public.crm_tags t ON t.id=ct.tag_id
+      GROUP BY ct.conversation_id
+    ) x;
     SELECT coalesce(jsonb_agg(to_jsonb(x) ORDER BY x.page_name NULLS LAST,x.page_id),'[]'::jsonb) INTO v_pages
     FROM (
       SELECT p.page_id,p.page_name,p.timezone,p.business_days,p.business_start,p.business_end
@@ -543,7 +554,7 @@ BEGIN
       v_report:=jsonb_build_object('days',30,'restricted',true);
     END IF;
 
-    RETURN jsonb_build_object('ok',true,'quick_replies',v_rows,'tags',v_tags,'pages',v_pages,'report',v_report,'role',v_role);
+    RETURN jsonb_build_object('ok',true,'quick_replies',v_rows,'tags',v_tags,'conversation_tags',v_conv_tags,'pages',v_pages,'report',v_report,'role',v_role);
   ELSIF p_action='set_tags' THEN
     v_conv:=nullif(p_payload->>'conversation_id','')::uuid;
     IF NOT EXISTS(
