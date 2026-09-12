@@ -1,4 +1,25 @@
+function mergeRuntimePages(result) {
+  if (!result?.ok) return result;
+  const configured = metaPageConfigs().map((page) => ({
+    page_id:page.pageId,
+    page_name:page.name || null,
+    timezone:"Asia/Ho_Chi_Minh",
+    business_days:[1,2,3,4,5,6],
+    business_start:"08:00:00",
+    business_end:"18:00:00"
+  }));
+  const existing = Array.isArray(result?.pages) ? result.pages : [];
+  const map = new Map(existing.map((page) => [String(page.page_id),page]));
+  for (const page of configured) {
+    const current=map.get(String(page.page_id));
+    map.set(String(page.page_id),current ? { ...page,...current,page_name:current.page_name || page.page_name } : page);
+  }
+  result.pages=[...map.values()];
+  return result;
+}
+
 import { bearerToken, serverRpc } from "@/lib/server-data-api";
+import { metaPageConfigs } from "@/lib/facebook-meta";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -22,6 +43,7 @@ export async function GET(request) {
       p_action:"bootstrap",
       p_payload:{}
     });
+    mergeRuntimePages(result);
     return Response.json(result, { status:statusFor(result), headers:{ "Cache-Control":"no-store" } });
   } catch (error) {
     return Response.json(
