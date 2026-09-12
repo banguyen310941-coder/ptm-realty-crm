@@ -107,6 +107,20 @@ Trong **Chat Fanpage → Kịch bản & AI**, quản lý có thể:
 
 AI dùng Vercel AI Gateway. Trên Vercel có thể xác thực qua OIDC; biến `AI_GATEWAY_API_KEY` chỉ là phương án tùy chọn. Model mặc định là `openai/gpt-5.6-sol` và có thể đổi bằng `PTM_AI_MODEL`. Runtime sẽ kiểm tra danh sách model hiện có của AI Gateway và tự chọn fallback nếu model cấu hình không còn khả dụng.
 
+## Fanpage Operations v2
+
+Module Chat Fanpage bổ sung lớp vận hành nâng cao:
+
+- Kịch bản có thể áp dụng cho **tất cả Fanpage** hoặc **một Fanpage cụ thể**.
+- Mỗi kịch bản chọn phạm vi thời gian: **mọi thời điểm**, **trong giờ làm việc**, hoặc **ngoài giờ làm việc**.
+- Giờ làm việc được cấu hình riêng theo Fanpage, mặc định múi giờ `Asia/Ho_Chi_Minh`.
+- Tin tự động gửi lỗi được retry theo backoff 5 → 15 → 30 phút, tối đa 3 lần, chỉ khi còn trong cửa sổ Messenger 24 giờ và bot không bị Sale takeover.
+- Inbox có bộ lọc theo tên/SĐT/nội dung, chưa đọc, chưa có SĐT, chưa phân Sale, bot đang dừng, Fanpage và nhãn.
+- Nhãn hội thoại dùng chung danh mục `crm_tags`, nhưng không xóa các nhãn Lead nghiệp vụ đã tồn tại.
+- Có **Câu trả lời nhanh** dùng chung hoặc riêng từng Fanpage.
+- Dashboard 30 ngày theo dõi phễu **Chat → SĐT → Lead → Phân Sale → Cọc/Giao dịch**, có breakdown theo Fanpage.
+- Retry được chạy trong housekeeping hiện có và được kích hoạt có kiểm soát khi Inbox được mở. Project hiện ở Vercel Hobby nên không cấu hình cron 5 phút vượt giới hạn plan.
+
 ## Automation
 
 Automation được cấu hình từ `crm_automation_rules` và chạy qua RPC bảo mật.
