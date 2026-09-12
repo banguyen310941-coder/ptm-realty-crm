@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { FacebookAutomationPanel } from "@/components/crm-suite/facebook-automation";
 
 function fmtTime(value) {
   if (!value) return "";
@@ -42,6 +43,7 @@ export function FacebookInboxModule({ sessionToken }) {
   const [loading,setLoading] = useState(true);
   const [sending,setSending] = useState(false);
   const [error,setError] = useState("");
+  const [automationOpen,setAutomationOpen] = useState(false);
 
   const selected = useMemo(
     () => inbox.conversations.find((item) => item.id === selectedId) || null,
@@ -141,6 +143,7 @@ export function FacebookInboxModule({ sessionToken }) {
       </div>
       <div className="facebook-inbox-head-actions">
         <span className="suite-live">{Number(inbox.unread_total || 0)} chưa đọc</span>
+        <button className="suite-btn primary" onClick={() => setAutomationOpen(true)}>⚡ Kịch bản & AI</button>
         <button className="suite-btn" onClick={() => loadInbox()} disabled={loading}>↻ Làm mới</button>
       </div>
     </div>
@@ -270,10 +273,18 @@ export function FacebookInboxModule({ sessionToken }) {
             <span>2. Quét SĐT trong tin nhắn</span>
             <span>3. Ghép khách cũ hoặc tạo lead mới</span>
             <span>4. Kích hoạt phân Sale 10 phút</span>
-            <span>5. Sale trả lời ngay tại CRM</span>
+            <span>5. Chạy kịch bản trả lời tự động</span>
+            <span>6. Sale tiếp tục chăm sóc tại CRM</span>
           </div>
         </> : null}
       </aside>
     </div>
+
+    <FacebookAutomationPanel
+      open={automationOpen}
+      onClose={() => setAutomationOpen(false)}
+      sessionToken={sessionToken}
+      conversationId={selectedId}
+    />
   </div>;
 }

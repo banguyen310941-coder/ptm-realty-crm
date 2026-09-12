@@ -89,6 +89,19 @@ Database cần chạy migration `sql/facebook-inbox-20260912.sql`. Sau đó prov
 
 > Messenger không cung cấp tùy ý số điện thoại riêng tư của người dùng cho Page. CRM chỉ tự bắt SĐT khi khách chủ động gửi số trong hội thoại, hoặc khi dữ liệu lead/form hợp lệ đã cung cấp số qua luồng lead intake.
 
+## Kịch bản trả lời tự động & AI đề xuất
+
+Trong **Chat Fanpage → Kịch bản & AI**, quản lý có thể:
+
+- Tạo kịch bản tự động theo: tin nhắn đầu tiên, từ khóa, chưa có SĐT, đã có SĐT hoặc mọi tin nhắn.
+- Xếp ưu tiên và cooldown để tránh gửi trùng/spam.
+- Bật/tắt/sửa/xóa kịch bản mà không sửa code.
+- Dùng AI để đề xuất 3 kịch bản dựa trên mục tiêu, kịch bản hiện có và hội thoại đang chọn.
+- AI **không tự bật** kịch bản; người quản lý phải chọn và lưu trước khi hệ thống có thể tự gửi.
+- Tin tự động gửi thành công được ghi vào lịch sử Messenger trong CRM.
+
+AI dùng Vercel AI Gateway. Trên Vercel có thể xác thực qua OIDC; biến `AI_GATEWAY_API_KEY` chỉ là phương án tùy chọn. Model mặc định có thể đổi bằng `PTM_AI_MODEL`.
+
 ## Automation
 
 Automation được cấu hình từ `crm_automation_rules` và chạy qua RPC bảo mật.

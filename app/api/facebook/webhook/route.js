@@ -1,5 +1,5 @@
 import { serverRpc } from "@/lib/server-data-api";
-import { extractVietnamPhone, fetchMetaProfile, metaAppSecret, verifyMetaSignature } from "@/lib/facebook-meta";
+import { extractVietnamPhone, fetchMetaProfile, metaAppSecret, sendMetaText, verifyMetaSignature } from "@/lib/facebook-meta";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -129,12 +129,60 @@ export async function POST(request) {
           p_payload:eventPayload(event),
           p_received_at:eventTimestamp(event?.timestamp)
         });
-        results.push(result);
+
+        let autoReply = null;
+        if (result?.ok && result?.conversation_id && text) {
+          const picked = await serverRpc("crm_facebook_auto_reply_pick_v1", {
+            p_secret:secret,
+            p_conversation_id:result.conversation_id,
+            p_inbound_message_id:messageId || null,
+            p_text:text
+          });
+
+          if (picked?.ok && picked?.matched && picked?.reply_text) {
+            try {
+              const sent = await sendMetaText(pageId, psid, picked.reply_text);
+              const logged = await serverRpc("crm_facebook_auto_reply_log_v1", {
+                p_secret:secret,
+                p_conversation_id:result.conversation_id,
+                p_scenario_id:picked.scenario_id,
+                p_inbound_message_id:messageId || null,
+                p_outbound_message_id:sent?.message_id || null,
+                p_text:picked.reply_text,
+                p_payload:{
+                  source:"scenario",
+                  scenario_name:picked.scenario_name || null,
+                  meta_response:sent || {}
+                }
+              });
+              autoReply = {
+                sent:Boolean(logged?.ok),
+                scenario_id:picked.scenario_id,
+                scenario_name:picked.scenario_name,
+                message_id:sent?.message_id || null
+              };
+            } catch (sendError) {
+              autoReply = {
+                sent:false,
+                scenario_id:picked.scenario_id,
+                scenario_name:picked.scenario_name,
+                error:sendError?.message || "AUTO_REPLY_SEND_FAILED"
+              };
+            }
+          }
+        }
+
+        results.push({ ...result, auto_reply:autoReply });
       }
     }
 
     return Response.json(
-      { ok:true, processed:results.length, created_leads:results.filter((item) => item?.created_lead).length },
+      {
+        ok:true,
+        processed:results.length,
+        created_leads:results.filter((item) => item?.created_lead).length,
+        auto_replies:results.filter((item) => item?.auto_reply?.sent).length
+      },
       { status:200, headers:{ "Cache-Control":"no-store" } }
     );
   } catch (error) {
