@@ -40,23 +40,32 @@ export default function LeadOfferAlert() {
   }, []);
 
   useEffect(() => {
-    if (!session?.token) { setOffers([]); return; }
+    if (!session?.token || session.user?.role !== "sale") {
+      setOffers([]);
+      setError("");
+      return;
+    }
+
     let stopped = false;
     const poll = async () => {
       try {
-        await call("crm_lead_offer_tick", { p_token: session.token }, false);
-        if (session.user?.role === "sale") {
-          const out = await call("crm_my_lead_offers", { p_token: session.token }, false);
-          if (!stopped) setOffers(out.offers || []);
-        } else if (!stopped) setOffers([]);
+        await call("crm_lead_offer_tick", { p_token:session.token }, false);
+        const out = await call("crm_my_lead_offers", { p_token:session.token }, false);
+        if (!stopped) {
+          setOffers(out.offers || []);
+          setError("");
+        }
       } catch (e) {
-        if (!stopped && !/chưa được kích hoạt|schema cache|could not find/i.test(e.message || "")) setError(e.message);
+        if (!stopped && !/chưa được kích hoạt|schema cache|could not find/i.test(e.message || "")) {
+          setError(e.message);
+        }
       }
     };
+
     poll();
-    const timer = setInterval(poll, 5000);
-    return () => { stopped = true; clearInterval(timer); };
-  }, [session?.token, session?.user?.role]);
+    const timer = setInterval(poll,5000);
+    return () => { stopped=true; clearInterval(timer); };
+  },[session?.token,session?.user?.role]);
 
   useEffect(() => {
     if (!active?.offer_id) return;
