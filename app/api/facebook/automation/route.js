@@ -17,7 +17,7 @@ export async function GET(request) {
   if (!token) return Response.json({ ok:false, error:"UNAUTHENTICATED" }, { status:401 });
 
   try {
-    const result = await serverRpc("crm_facebook_automation_api_v1", {
+    const result = await serverRpc("crm_facebook_automation_api_v2", {
       p_token:token,
       p_action:"bootstrap",
       p_payload:{}
@@ -39,7 +39,7 @@ export async function POST(request) {
   const action = String(body?.action || "save").trim();
 
   try {
-    const result = await serverRpc("crm_facebook_automation_api_v1", {
+    const result = await serverRpc("crm_facebook_automation_api_v2", {
       p_token:token,
       p_action:action,
       p_payload:body?.payload || {}
