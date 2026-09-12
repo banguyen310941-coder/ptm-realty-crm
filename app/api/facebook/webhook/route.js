@@ -3,6 +3,7 @@ import { extractVietnamPhone, fetchMetaProfile, metaAppSecret, sendMetaText, ver
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
+export const maxDuration = 45;
 
 function messageText(event) {
   const direct = String(event?.message?.text || "").trim();
@@ -66,6 +67,7 @@ export async function GET(request) {
     }
     return Response.json({ ok:false, error:"INVALID_VERIFY_TOKEN" }, { status:403, headers:{ "Cache-Control":"no-store" } });
   } catch (error) {
+    console.error("[facebook-webhook] verification failed", { error:error?.message || "META_VERIFY_FAILED" });
     return Response.json({ ok:false, error:error?.message || "META_VERIFY_FAILED" }, { status:503, headers:{ "Cache-Control":"no-store" } });
   }
 }
@@ -140,27 +142,9 @@ export async function POST(request) {
           });
 
           if (claimed?.ok && claimed?.matched && claimed?.reply_text && claimed?.attempt_id) {
+            let sent = null;
             try {
-              const sent = await sendMetaText(pageId, psid, claimed.reply_text);
-              const finalized = await serverRpc("crm_facebook_auto_reply_finish_v2", {
-                p_secret:secret,
-                p_attempt_id:claimed.attempt_id,
-                p_success:true,
-                p_outbound_message_id:sent?.message_id || null,
-                p_error:null,
-                p_payload:{
-                  source:"scenario",
-                  scenario_name:claimed.scenario_name || null,
-                  meta_response:sent || {}
-                }
-              });
-              autoReply = {
-                sent:Boolean(finalized?.ok && finalized?.status === "sent"),
-                attempt_id:claimed.attempt_id,
-                scenario_id:claimed.scenario_id,
-                scenario_name:claimed.scenario_name,
-                message_id:sent?.message_id || null
-              };
+              sent = await sendMetaText(pageId, psid, claimed.reply_text);
             } catch (sendError) {
               await serverRpc("crm_facebook_auto_reply_finish_v2", {
                 p_secret:secret,
@@ -179,6 +163,48 @@ export async function POST(request) {
                 error:sendError?.message || "AUTO_REPLY_SEND_FAILED"
               };
             }
+
+            if (sent) {
+              try {
+                const finalized = await serverRpc("crm_facebook_auto_reply_finish_v2", {
+                  p_secret:secret,
+                  p_attempt_id:claimed.attempt_id,
+                  p_success:true,
+                  p_outbound_message_id:sent?.message_id || null,
+                  p_error:null,
+                  p_payload:{
+                    source:"scenario",
+                    scenario_name:claimed.scenario_name || null,
+                    meta_response:sent || {}
+                  }
+                });
+                autoReply = {
+                  sent:true,
+                  logged:Boolean(finalized?.ok && finalized?.status === "sent"),
+                  attempt_id:claimed.attempt_id,
+                  scenario_id:claimed.scenario_id,
+                  scenario_name:claimed.scenario_name,
+                  message_id:sent?.message_id || null
+                };
+              } catch (finalizeError) {
+                // Meta has already accepted this message. Never mark the attempt as
+                // failed/retryable here, because that can duplicate-send to the customer.
+                console.error("[facebook-webhook] Meta sent but DB finalize failed", {
+                  attempt_id:claimed.attempt_id,
+                  message_id:sent?.message_id || null,
+                  error:finalizeError?.message || "FINALIZE_FAILED"
+                });
+                autoReply = {
+                  sent:true,
+                  logged:false,
+                  reconciliation_needed:true,
+                  attempt_id:claimed.attempt_id,
+                  scenario_id:claimed.scenario_id,
+                  scenario_name:claimed.scenario_name,
+                  message_id:sent?.message_id || null
+                };
+              }
+            }
           } else if (claimed?.reason) {
             autoReply = { sent:false, skipped:true, reason:claimed.reason };
           }
@@ -193,11 +219,13 @@ export async function POST(request) {
         ok:true,
         processed:results.length,
         created_leads:results.filter((item) => item?.created_lead).length,
-        auto_replies:results.filter((item) => item?.auto_reply?.sent).length
+        auto_replies:results.filter((item) => item?.auto_reply?.sent).length,
+        reconciliation_needed:results.filter((item) => item?.auto_reply?.reconciliation_needed).length
       },
       { status:200, headers:{ "Cache-Control":"no-store" } }
     );
   } catch (error) {
+    console.error("[facebook-webhook] processing failed", { error:error?.message || "META_WEBHOOK_PROCESSING_FAILED" });
     return Response.json(
       { ok:false, error:error?.message || "META_WEBHOOK_PROCESSING_FAILED" },
       { status:500, headers:{ "Cache-Control":"no-store" } }
