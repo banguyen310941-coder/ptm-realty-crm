@@ -1,4 +1,4 @@
-import { bearerToken, serverRpc } from "@/lib/server-data-api";
+import { bearerToken, serverRpc, serverRpcErrorStatus } from "@/lib/server-data-api";
 
 export const dynamic = "force-dynamic";
 
@@ -160,6 +160,10 @@ export async function POST(request) {
   } catch (error) {
     const message = error?.message || "LEAD_INTAKE_FAILED";
     if (/duplicate key|unique constraint/i.test(message)) return Response.json({ ok:false, error:"DUPLICATE_LEAD" }, { status:409 });
-    return Response.json({ ok:false, error:message }, { status:500 });
+    const status=serverRpcErrorStatus(error);
+    return Response.json(
+      { ok:false, error:message, code:status===503 ? "DATA_API_TEMPORARY" : "LEAD_INTAKE_FAILED" },
+      { status, headers:{ "Cache-Control":"no-store", ...(status===503 ? { "Retry-After":"3" } : {}) } }
+    );
   }
 }
