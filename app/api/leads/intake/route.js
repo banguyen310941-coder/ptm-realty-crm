@@ -35,6 +35,39 @@ function unwrap(body) {
   return { ...leadData, ...fieldData };
 }
 
+function parseBudgetValue(value) {
+  const raw = text(value);
+  if (!raw) return 0;
+
+  const folded = raw.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"");
+  const hasBillion = /(^|\s)(ty|billion|bn)(\s|$)/.test(folded);
+  const hasMillion = /(^|\s)(trieu|tr|million|mn)(\s|$)/.test(folded);
+  const multiplier = hasBillion ? 1e9 : hasMillion ? 1e6 : 1;
+
+  const match = folded.match(/[0-9][0-9.,\s]*/);
+  if (!match) return 0;
+
+  let token = match[0].trim().replace(/\s+/g,"");
+  if (multiplier > 1) {
+    const separators = [...token.matchAll(/[.,]/g)].map((m) => m.index);
+    if (separators.length) {
+      const last = separators[separators.length - 1];
+      const decimals = token.length - last - 1;
+      if (decimals > 0 && decimals <= 2) {
+        token = token.slice(0,last).replace(/[.,]/g,"") + "." + token.slice(last + 1).replace(/[.,]/g,"");
+      } else {
+        token = token.replace(/[.,]/g,"");
+      }
+    }
+    const n = Number(token);
+    return Number.isFinite(n) ? Math.round(n * multiplier) : 0;
+  }
+
+  const digits = token.replace(/[^0-9]/g,"");
+  const n = Number(digits);
+  return Number.isFinite(n) ? n : 0;
+}
+
 function normalize(body, sourceHint) {
   const raw = unwrap(body);
   const sourceKey = first(sourceHint, raw.source, raw.platform, raw.channel, body?.source).toLowerCase();
@@ -45,7 +78,7 @@ function normalize(body, sourceHint) {
   const need = first(raw.need, raw.message, raw.requirement, raw.nhu_cau, raw["nhu cầu"]);
   const project = first(raw.project, raw.project_name, raw.product, raw.campaign_name, raw["dự án"]);
   const budgetRaw = first(raw.budget, raw.budget_max, raw.price_range, raw.ngan_sach, raw["ngân sách"]);
-  const budget = Number(String(budgetRaw).replace(/[^0-9.]/g, "")) || 0;
+  const budget = parseBudgetValue(budgetRaw);
   const notes = first(raw.notes, raw.note, raw.comment, raw.content);
   const externalLeadId = first(raw.external_lead_id, raw.leadgen_id, raw.lead_id, raw.id, body?.leadgen_id);
 
