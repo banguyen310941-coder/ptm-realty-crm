@@ -182,11 +182,13 @@ export function FacebookAutomationPanel({ open, onClose, sessionToken, conversat
         <div className="facebook-automation-stat"><span>Đã gửi 24h</span><b>{Number(stats.sent_24h || 0)}</b></div>
         <div className="facebook-automation-stat"><span>Đã gửi 7 ngày</span><b>{Number(stats.sent_7d || 0)}</b></div>
         <div className={"facebook-automation-stat " + (Number(stats.failed_24h || 0) ? "danger" : "")}><span>Lỗi gửi 24h</span><b>{Number(stats.failed_24h || 0)}</b></div>
+        <div className="facebook-automation-stat"><span>Chờ retry</span><b>{Number(stats.retry_pending || 0)}</b></div>
+        <div className={"facebook-automation-stat " + (Number(stats.stuck_claimed || 0) ? "danger" : "")}><span>Cần kiểm tra thủ công</span><b>{Number(stats.stuck_claimed || 0)}</b></div>
       </div>
       {recentFailures.length > 0 && <div className="facebook-failure-list">
         {recentFailures.slice(0,3).map((item) => <div className="facebook-failure-item" key={item.id}>
           <b>{item.scenario_name || "Kịch bản tự động"}</b>
-          <span>{item.error_text || "Không gửi được tin"} · {new Date(item.attempted_at).toLocaleString("vi-VN")}</span>
+          <span>{item.error_text || "Không gửi được tin"} · lần thử {Number(item.retry_count || 0) + 1}{item.next_retry_at ? " · retry " + new Date(item.next_retry_at).toLocaleString("vi-VN") : ""}</span>
         </div>)}
       </div>}
 
