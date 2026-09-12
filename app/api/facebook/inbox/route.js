@@ -1,5 +1,6 @@
 import { bearerToken, serverRpc } from "@/lib/server-data-api";
 import { metaRuntimeStatus } from "@/lib/facebook-meta";
+import { aiGatewayStatus } from "@/lib/ai-gateway";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -29,7 +30,7 @@ export async function GET(request) {
       p_payload:conversationId ? { conversation_id:conversationId } : {}
     });
 
-    if (result?.ok && !conversationId) result.runtime = metaRuntimeStatus();
+    if (result?.ok && !conversationId) result.runtime = { ...metaRuntimeStatus(), ai:aiGatewayStatus() };
     return Response.json(result, { status:statusFor(result), headers:{ "Cache-Control":"no-store" } });
   } catch (error) {
     return Response.json(
@@ -51,16 +52,28 @@ export async function POST(request) {
     return Response.json({ ok:false, error:"CONVERSATION_REQUIRED" }, { status:400, headers:{ "Cache-Control":"no-store" } });
   }
 
+  const action = String(body?.action || "mark_read").trim();
+  const allowed = new Set(["mark_read","pause_automation","resume_automation"]);
+  if (!allowed.has(action)) {
+    return Response.json({ ok:false, error:"INVALID_ACTION" }, { status:400, headers:{ "Cache-Control":"no-store" } });
+  }
+
   try {
     const result = await serverRpc("crm_facebook_api_v1", {
       p_token:token,
-      p_action:"mark_read",
-      p_payload:{ conversation_id:conversationId }
+      p_action:action,
+      p_payload:{
+        conversation_id:conversationId,
+        ...(action === "pause_automation" ? {
+          minutes:Number(body?.minutes || 480),
+          reason:String(body?.reason || "manual_pause").slice(0,120)
+        } : {})
+      }
     });
     return Response.json(result, { status:statusFor(result), headers:{ "Cache-Control":"no-store" } });
   } catch (error) {
     return Response.json(
-      { ok:false, error:error?.message || "FACEBOOK_MARK_READ_FAILED" },
+      { ok:false, error:error?.message || "FACEBOOK_INBOX_ACTION_FAILED" },
       { status:500, headers:{ "Cache-Control":"no-store" } }
     );
   }

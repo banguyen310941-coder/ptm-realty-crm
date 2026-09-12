@@ -132,43 +132,55 @@ export async function POST(request) {
 
         let autoReply = null;
         if (result?.ok && result?.conversation_id && text) {
-          const picked = await serverRpc("crm_facebook_auto_reply_pick_v1", {
+          const claimed = await serverRpc("crm_facebook_auto_reply_claim_v2", {
             p_secret:secret,
             p_conversation_id:result.conversation_id,
             p_inbound_message_id:messageId || null,
             p_text:text
           });
 
-          if (picked?.ok && picked?.matched && picked?.reply_text) {
+          if (claimed?.ok && claimed?.matched && claimed?.reply_text && claimed?.attempt_id) {
             try {
-              const sent = await sendMetaText(pageId, psid, picked.reply_text);
-              const logged = await serverRpc("crm_facebook_auto_reply_log_v1", {
+              const sent = await sendMetaText(pageId, psid, claimed.reply_text);
+              const finalized = await serverRpc("crm_facebook_auto_reply_finish_v2", {
                 p_secret:secret,
-                p_conversation_id:result.conversation_id,
-                p_scenario_id:picked.scenario_id,
-                p_inbound_message_id:messageId || null,
+                p_attempt_id:claimed.attempt_id,
+                p_success:true,
                 p_outbound_message_id:sent?.message_id || null,
-                p_text:picked.reply_text,
+                p_error:null,
                 p_payload:{
                   source:"scenario",
-                  scenario_name:picked.scenario_name || null,
+                  scenario_name:claimed.scenario_name || null,
                   meta_response:sent || {}
                 }
               });
               autoReply = {
-                sent:Boolean(logged?.ok),
-                scenario_id:picked.scenario_id,
-                scenario_name:picked.scenario_name,
+                sent:Boolean(finalized?.ok && finalized?.status === "sent"),
+                attempt_id:claimed.attempt_id,
+                scenario_id:claimed.scenario_id,
+                scenario_name:claimed.scenario_name,
                 message_id:sent?.message_id || null
               };
             } catch (sendError) {
+              await serverRpc("crm_facebook_auto_reply_finish_v2", {
+                p_secret:secret,
+                p_attempt_id:claimed.attempt_id,
+                p_success:false,
+                p_outbound_message_id:null,
+                p_error:sendError?.message || "AUTO_REPLY_SEND_FAILED",
+                p_payload:{ source:"scenario" }
+              }).catch(() => {});
+
               autoReply = {
                 sent:false,
-                scenario_id:picked.scenario_id,
-                scenario_name:picked.scenario_name,
+                attempt_id:claimed.attempt_id,
+                scenario_id:claimed.scenario_id,
+                scenario_name:claimed.scenario_name,
                 error:sendError?.message || "AUTO_REPLY_SEND_FAILED"
               };
             }
+          } else if (claimed?.reason) {
+            autoReply = { sent:false, skipped:true, reason:claimed.reason };
           }
         }
 

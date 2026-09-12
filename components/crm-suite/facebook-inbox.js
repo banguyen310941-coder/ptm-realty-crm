@@ -44,6 +44,8 @@ export function FacebookInboxModule({ sessionToken }) {
   const [sending,setSending] = useState(false);
   const [error,setError] = useState("");
   const [automationOpen,setAutomationOpen] = useState(false);
+  const [aiReplyLoading,setAiReplyLoading] = useState(false);
+  const [aiReplyNote,setAiReplyNote] = useState("");
 
   const selected = useMemo(
     () => inbox.conversations.find((item) => item.id === selectedId) || null,
@@ -108,6 +110,45 @@ export function FacebookInboxModule({ sessionToken }) {
     return () => clearInterval(timer);
   },[selectedId,loadThread]);
 
+  async function suggestAiReply() {
+    if (!selectedId || aiReplyLoading) return;
+    setAiReplyLoading(true);
+    setAiReplyNote("");
+    setError("");
+    try {
+      const data = await requestJson("/api/facebook/ai-reply", sessionToken, {
+        method:"POST",
+        body:JSON.stringify({ conversation_id:selectedId })
+      });
+      setReply(String(data?.reply || ""));
+      const notes = [data?.intent ? "Ý định: " + data.intent : "", data?.next_action ? "Bước tiếp: " + data.next_action : "", data?.caution ? "Lưu ý: " + data.caution : ""].filter(Boolean);
+      setAiReplyNote(notes.join(" · "));
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setAiReplyLoading(false);
+    }
+  }
+
+  async function setAutomationPause(paused) {
+    if (!selectedId) return;
+    setError("");
+    try {
+      await requestJson("/api/facebook/inbox", sessionToken, {
+        method:"POST",
+        body:JSON.stringify({
+          conversation_id:selectedId,
+          action:paused ? "pause_automation" : "resume_automation",
+          minutes:480,
+          reason:"manual_chat_control"
+        })
+      });
+      await Promise.all([loadThread(selectedId,true),loadInbox(true)]);
+    } catch (e) {
+      setError(e.message);
+    }
+  }
+
   async function sendReply(e) {
     e?.preventDefault?.();
     const text = reply.trim();
@@ -121,6 +162,7 @@ export function FacebookInboxModule({ sessionToken }) {
         body:JSON.stringify({ conversation_id:selectedId, text })
       });
       setReply("");
+      setAiReplyNote("");
       await Promise.all([loadThread(selectedId,true),loadInbox(true)]);
     } catch (e) {
       setError(e.message);
@@ -151,6 +193,10 @@ export function FacebookInboxModule({ sessionToken }) {
     {runtime && !runtime.configured && <div className="facebook-runtime-warning">
       <b>Chưa bật kết nối gửi/nhận Meta trên Vercel.</b>
       <span>Cần cấu hình App Secret và Page Access Token. Dữ liệu CRM và giao diện inbox đã sẵn sàng.</span>
+    </div>}
+    {runtime?.ai && !runtime.ai.configured && <div className="facebook-runtime-warning facebook-ai-warning">
+      <b>AI Gateway chưa bật.</b>
+      <span>Kịch bản cố định vẫn chạy bình thường; AI gợi ý chỉ hoạt động sau khi Vercel OIDC hoặc AI Gateway API key được cấu hình.</span>
     </div>}
 
     {error && <div className="suite-error-banner">{error}</div>}
@@ -208,6 +254,7 @@ export function FacebookInboxModule({ sessionToken }) {
               <em className={conv.within_24h ? "online" : "expired"}>
                 {conv.within_24h ? "Trong 24h" : "Ngoài 24h"}
               </em>
+              {conv.automation_paused && <em className="paused">Bot đang tạm dừng</em>}
             </div>
           </header>
 
@@ -227,6 +274,17 @@ export function FacebookInboxModule({ sessionToken }) {
             {!conv.within_24h && <div className="facebook-window-note">
               Meta đã đóng cửa sổ phản hồi 24 giờ. CRM khóa gửi tin thường để tránh lỗi/chặn từ Send API.
             </div>}
+            <div className="facebook-ai-reply-row">
+              <button
+                className="suite-btn"
+                type="button"
+                onClick={suggestAiReply}
+                disabled={!conv.within_24h || aiReplyLoading || runtime?.ai?.configured === false}
+              >
+                {aiReplyLoading ? "AI đang soạn…" : "✨ AI gợi ý trả lời"}
+              </button>
+              {aiReplyNote && <span>{aiReplyNote}</span>}
+            </div>
             <div className="facebook-compose-row">
               <textarea
                 value={reply}
@@ -266,6 +324,16 @@ export function FacebookInboxModule({ sessionToken }) {
             <div><span>Phụ trách</span><b>{conv.owner_name || (conv.lead_id ? "Đang phân Sale" : "Chưa phân")}</b></div>
             <div><span>Fanpage ID</span><b>{conv.page_id}</b></div>
             <div><span>Messenger PSID</span><b>{String(conv.psid || "").slice(-12)}</b></div>
+            <div><span>Bot tự động</span><b>{conv.automation_paused ? "Đang tạm dừng" : "Đang cho phép"}</b></div>
+          </div>
+          <div className="facebook-bot-control">
+            {conv.automation_paused ? <>
+              <p>Sale đang tiếp quản hội thoại. Bot sẽ không tự trả lời cho tới khi hết thời gian tạm dừng.</p>
+              <button className="suite-btn primary" type="button" onClick={() => setAutomationPause(false)}>▶ Bật lại bot</button>
+            </> : <>
+              <p>Khi Sale gửi tin thủ công, CRM tự tạm dừng bot 8 giờ để tránh trả lời chồng chéo.</p>
+              <button className="suite-btn" type="button" onClick={() => setAutomationPause(true)}>⏸ Tạm dừng bot 8 giờ</button>
+            </>}
           </div>
           <div className="facebook-auto-flow">
             <b>Tự động hóa đang áp dụng</b>

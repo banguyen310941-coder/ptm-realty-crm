@@ -99,8 +99,13 @@ Trong **Chat Fanpage → Kịch bản & AI**, quản lý có thể:
 - Dùng AI để đề xuất 3 kịch bản dựa trên mục tiêu, kịch bản hiện có và hội thoại đang chọn.
 - AI **không tự bật** kịch bản; người quản lý phải chọn và lưu trước khi hệ thống có thể tự gửi.
 - Tin tự động gửi thành công được ghi vào lịch sử Messenger trong CRM.
+- Mỗi webhook được claim nguyên tử trước khi gửi để tránh bot trả lời trùng khi Meta retry hoặc gửi đồng thời.
+- Khi Sale trả lời thủ công, bot tự tạm dừng 8 giờ; Sale có thể bật lại hoặc tạm dừng thủ công từ hồ sơ hội thoại.
+- Dashboard kịch bản hiển thị số gửi thành công/lỗi 24 giờ và 7 ngày, kèm lỗi gần nhất.
+- Trong từng hội thoại, Sale có nút **AI gợi ý trả lời**; AI chỉ điền bản nháp, không tự gửi.
+- SĐT và email trong lịch sử chat được che trước khi gửi ngữ cảnh sang AI Gateway.
 
-AI dùng Vercel AI Gateway. Trên Vercel có thể xác thực qua OIDC; biến `AI_GATEWAY_API_KEY` chỉ là phương án tùy chọn. Model mặc định có thể đổi bằng `PTM_AI_MODEL`.
+AI dùng Vercel AI Gateway. Trên Vercel có thể xác thực qua OIDC; biến `AI_GATEWAY_API_KEY` chỉ là phương án tùy chọn. Model mặc định là `openai/gpt-5.6-sol` và có thể đổi bằng `PTM_AI_MODEL`. Runtime sẽ kiểm tra danh sách model hiện có của AI Gateway và tự chọn fallback nếu model cấu hình không còn khả dụng.
 
 ## Automation
 

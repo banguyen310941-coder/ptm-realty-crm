@@ -1,5 +1,5 @@
 import { bearerToken, serverRpc } from "@/lib/server-data-api";
-import { aiGatewayStatus, generateGatewayJson } from "@/lib/ai-gateway";
+import { aiGatewayStatus, generateGatewayJson, sanitizeAiText } from "@/lib/ai-gateway";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -56,7 +56,7 @@ export async function POST(request) {
       if (thread?.ok && Array.isArray(thread?.messages)) {
         recentMessages = thread.messages.slice(-20).map((m) => ({
           direction:m.direction,
-          text:String(m.text_content || "").slice(0,1200)
+          text:sanitizeAiText(m.text_content || "").slice(0,1200)
         }));
       }
     }
