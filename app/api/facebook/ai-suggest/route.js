@@ -1,4 +1,4 @@
-import { bearerToken, serverRpc } from "@/lib/server-data-api";
+import { bearerToken, serverRpc, serverRpcErrorStatus } from "@/lib/server-data-api";
 import { aiGatewayStatus, generateGatewayJson, sanitizeAiText } from "@/lib/ai-gateway";
 
 export const dynamic = "force-dynamic";
@@ -36,7 +36,7 @@ export async function POST(request) {
   const conversationId = String(body?.conversation_id || "").trim();
 
   try {
-    const automation = await serverRpc("crm_facebook_automation_api_v1", {
+    const automation = await serverRpc("crm_facebook_automation_api_v2", {
       p_token:token,
       p_action:"bootstrap",
       p_payload:{}
@@ -118,7 +118,11 @@ export async function POST(request) {
       ai:{ model:generated.model, usage:generated.usage }
     }, { headers:{ "Cache-Control":"no-store" } });
   } catch (error) {
-    const status = error?.code === "AI_GATEWAY_NOT_CONFIGURED" ? 503 : 502;
+    const status = error?.code === "AI_GATEWAY_NOT_CONFIGURED"
+      ? 503
+      : String(error?.code || "").startsWith("AI_")
+        ? 502
+        : serverRpcErrorStatus(error);
     return Response.json(
       { ok:false, error:error?.message || "AI_SUGGEST_FAILED", code:error?.code || "AI_SUGGEST_FAILED" },
       { status, headers:{ "Cache-Control":"no-store" } }

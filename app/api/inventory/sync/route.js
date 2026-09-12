@@ -1,4 +1,4 @@
-import { bearerToken, serverRpc } from "@/lib/server-data-api";
+import { bearerToken, serverRpc, serverRpcErrorStatus } from "@/lib/server-data-api";
 
 export const dynamic = "force-dynamic";
 
@@ -56,6 +56,7 @@ export async function POST(request) {
 
     return noStore(200, result);
   } catch (error) {
-    return noStore(500, { ok: false, error: error?.message || "INVENTORY_SYNC_FAILED" });
+    const status=serverRpcErrorStatus(error);
+    return noStore(status, { ok:false, error:error?.message || "INVENTORY_SYNC_FAILED", code:status===503 ? "DATA_API_TEMPORARY" : "INVENTORY_SYNC_FAILED" });
   }
 }

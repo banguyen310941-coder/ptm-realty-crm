@@ -1,3 +1,4 @@
+import { createHash } from "crypto";
 import { serverRpc } from "@/lib/server-data-api";
 import { extractVietnamPhone, fetchMetaProfile, metaAppSecret, sendMetaText, verifyMetaSignature } from "@/lib/facebook-meta";
 
@@ -45,6 +46,23 @@ function eventTimestamp(value) {
   if (!Number.isFinite(n) || n <= 0) return new Date().toISOString();
   const date = new Date(n);
   return Number.isNaN(date.getTime()) ? new Date().toISOString() : date.toISOString();
+}
+
+function eventMessageId(pageId, psid, event) {
+  const direct = String(event?.message?.mid || event?.postback?.mid || "").trim();
+  if (direct) return direct;
+  if (!event?.postback) return "";
+
+  const stable = [
+    "postback",
+    String(pageId || ""),
+    String(psid || ""),
+    String(event?.timestamp || ""),
+    String(event?.postback?.payload || ""),
+    String(event?.postback?.title || "")
+  ].join("|");
+
+  return "synthetic_postback_" + createHash("sha256").update(stable,"utf8").digest("hex").slice(0,40);
 }
 
 export async function GET(request) {
@@ -111,7 +129,7 @@ export async function POST(request) {
 
         const text = messageText(event);
         const phone = extractVietnamPhone(text);
-        const messageId = String(event?.message?.mid || event?.postback?.mid || "").trim();
+        const messageId = eventMessageId(pageId, psid, event);
         const cacheKey = pageId + ":" + psid;
 
         let senderName = profileCache.get(cacheKey);

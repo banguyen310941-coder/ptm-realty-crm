@@ -1,4 +1,4 @@
-import { bearerToken, serverRpc } from "@/lib/server-data-api";
+import { bearerToken, serverRpc, serverRpcErrorStatus } from "@/lib/server-data-api";
 import { metaRuntimeStatus } from "@/lib/facebook-meta";
 import { aiGatewayStatus } from "@/lib/ai-gateway";
 import { runFacebookRetryBatch } from "@/lib/facebook-retry";
@@ -39,9 +39,10 @@ export async function GET(request) {
     }
     return Response.json(result, { status:statusFor(result), headers:{ "Cache-Control":"no-store" } });
   } catch (error) {
+    const status=serverRpcErrorStatus(error);
     return Response.json(
-      { ok:false, error:error?.message || "FACEBOOK_INBOX_FAILED" },
-      { status:500, headers:{ "Cache-Control":"no-store" } }
+      { ok:false, error:error?.message || "FACEBOOK_INBOX_FAILED", code:status===503 ? "DATA_API_TEMPORARY" : "FACEBOOK_INBOX_FAILED" },
+      { status, headers:{ "Cache-Control":"no-store", ...(status===503 ? { "Retry-After":"3" } : {}) } }
     );
   }
 }
@@ -78,9 +79,10 @@ export async function POST(request) {
     });
     return Response.json(result, { status:statusFor(result), headers:{ "Cache-Control":"no-store" } });
   } catch (error) {
+    const status=serverRpcErrorStatus(error);
     return Response.json(
-      { ok:false, error:error?.message || "FACEBOOK_INBOX_ACTION_FAILED" },
-      { status:500, headers:{ "Cache-Control":"no-store" } }
+      { ok:false, error:error?.message || "FACEBOOK_INBOX_ACTION_FAILED", code:status===503 ? "DATA_API_TEMPORARY" : "FACEBOOK_INBOX_ACTION_FAILED" },
+      { status, headers:{ "Cache-Control":"no-store", ...(status===503 ? { "Retry-After":"3" } : {}) } }
     );
   }
 }

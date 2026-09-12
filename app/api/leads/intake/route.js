@@ -1,4 +1,4 @@
-import { bearerToken, serverRpc } from "@/lib/server-data-api";
+import { bearerToken, serverRpc, serverRpcErrorStatus } from "@/lib/server-data-api";
 
 export const dynamic = "force-dynamic";
 
@@ -35,6 +35,46 @@ function unwrap(body) {
   return { ...leadData, ...fieldData };
 }
 
+function parseUnitNumber(token) {
+  let value=String(token || "").trim().replace(/\s+/g,"");
+  if (!value) return 0;
+
+  const separators=[...value.matchAll(/[.,]/g)].map((m)=>m.index);
+  if (separators.length) {
+    const last=separators[separators.length-1];
+    const decimals=value.length-last-1;
+    if (decimals>0 && decimals<=2) {
+      value=value.slice(0,last).replace(/[.,]/g,"")+"."+value.slice(last+1).replace(/[.,]/g,"");
+    } else {
+      value=value.replace(/[.,]/g,"");
+    }
+  }
+
+  const n=Number(value);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function parseBudgetValue(value) {
+  const raw=text(value);
+  if (!raw) return 0;
+
+  const folded=raw.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"");
+  const billion=folded.match(/([0-9][0-9.,\s]*)\s*(?:ty|billion|bn)\b/);
+  const million=folded.match(/([0-9][0-9.,\s]*)\s*(?:trieu|tr|million|mn)\b/);
+
+  if (billion || million) {
+    const total=(billion ? parseUnitNumber(billion[1])*1e9 : 0)
+      +(million ? parseUnitNumber(million[1])*1e6 : 0);
+    return Number.isFinite(total) ? Math.round(total) : 0;
+  }
+
+  const match=folded.match(/[0-9][0-9.,\s]*/);
+  if (!match) return 0;
+  const digits=match[0].replace(/[^0-9]/g,"");
+  const n=Number(digits);
+  return Number.isFinite(n) ? n : 0;
+}
+
 function normalize(body, sourceHint) {
   const raw = unwrap(body);
   const sourceKey = first(sourceHint, raw.source, raw.platform, raw.channel, body?.source).toLowerCase();
@@ -45,7 +85,7 @@ function normalize(body, sourceHint) {
   const need = first(raw.need, raw.message, raw.requirement, raw.nhu_cau, raw["nhu cầu"]);
   const project = first(raw.project, raw.project_name, raw.product, raw.campaign_name, raw["dự án"]);
   const budgetRaw = first(raw.budget, raw.budget_max, raw.price_range, raw.ngan_sach, raw["ngân sách"]);
-  const budget = Number(String(budgetRaw).replace(/[^0-9.]/g, "")) || 0;
+  const budget = parseBudgetValue(budgetRaw);
   const notes = first(raw.notes, raw.note, raw.comment, raw.content);
   const externalLeadId = first(raw.external_lead_id, raw.leadgen_id, raw.lead_id, raw.id, body?.leadgen_id);
 
@@ -75,8 +115,8 @@ function normalize(body, sourceHint) {
   };
 }
 
-function suppliedSecret(request, url) {
-  return request.headers.get("x-ptm-webhook-secret") || bearerToken(request) || url.searchParams.get("token") || "";
+function suppliedSecret(request) {
+  return request.headers.get("x-ptm-webhook-secret") || bearerToken(request) || "";
 }
 
 export async function GET(request) {
@@ -101,8 +141,14 @@ export async function GET(request) {
 export async function POST(request) {
   const url = new URL(request.url);
   try {
-    const secret = suppliedSecret(request, url);
-    if (!secret) return Response.json({ ok:false, error:"WEBHOOK_SECRET_REQUIRED" }, { status:401 });
+    if (url.searchParams.has("token")) {
+      return Response.json(
+        { ok:false, error:"QUERY_SECRET_NOT_ALLOWED", hint:"Dùng header x-ptm-webhook-secret hoặc Authorization: Bearer." },
+        { status:400, headers:{ "Cache-Control":"no-store" } }
+      );
+    }
+    const secret = suppliedSecret(request);
+    if (!secret) return Response.json({ ok:false, error:"WEBHOOK_SECRET_REQUIRED" }, { status:401, headers:{ "Cache-Control":"no-store" } });
 
     const body = await request.json().catch(() => ({}));
     const lead = normalize(body, url.searchParams.get("source") || "");
@@ -121,6 +167,10 @@ export async function POST(request) {
   } catch (error) {
     const message = error?.message || "LEAD_INTAKE_FAILED";
     if (/duplicate key|unique constraint/i.test(message)) return Response.json({ ok:false, error:"DUPLICATE_LEAD" }, { status:409 });
-    return Response.json({ ok:false, error:message }, { status:500 });
+    const status=serverRpcErrorStatus(error);
+    return Response.json(
+      { ok:false, error:message, code:status===503 ? "DATA_API_TEMPORARY" : "LEAD_INTAKE_FAILED" },
+      { status, headers:{ "Cache-Control":"no-store", ...(status===503 ? { "Retry-After":"3" } : {}) } }
+    );
   }
 }

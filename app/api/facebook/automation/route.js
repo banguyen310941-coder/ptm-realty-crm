@@ -18,7 +18,7 @@ function mergeRuntimePages(result) {
   return result;
 }
 
-import { bearerToken, serverRpc } from "@/lib/server-data-api";
+import { bearerToken, serverRpc, serverRpcErrorStatus } from "@/lib/server-data-api";
 import { metaPageConfigs } from "@/lib/facebook-meta";
 
 export const dynamic = "force-dynamic";
@@ -46,9 +46,10 @@ export async function GET(request) {
     mergeRuntimePages(result);
     return Response.json(result, { status:statusFor(result), headers:{ "Cache-Control":"no-store" } });
   } catch (error) {
+    const status=serverRpcErrorStatus(error);
     return Response.json(
-      { ok:false, error:error?.message || "FACEBOOK_AUTOMATION_FAILED" },
-      { status:500, headers:{ "Cache-Control":"no-store" } }
+      { ok:false, error:error?.message || "FACEBOOK_AUTOMATION_FAILED", code:status===503 ? "DATA_API_TEMPORARY" : "FACEBOOK_AUTOMATION_FAILED" },
+      { status, headers:{ "Cache-Control":"no-store", ...(status===503 ? { "Retry-After":"3" } : {}) } }
     );
   }
 }
@@ -68,9 +69,10 @@ export async function POST(request) {
     });
     return Response.json(result, { status:statusFor(result), headers:{ "Cache-Control":"no-store" } });
   } catch (error) {
+    const status=serverRpcErrorStatus(error);
     return Response.json(
-      { ok:false, error:error?.message || "FACEBOOK_AUTOMATION_FAILED" },
-      { status:500, headers:{ "Cache-Control":"no-store" } }
+      { ok:false, error:error?.message || "FACEBOOK_AUTOMATION_FAILED", code:status===503 ? "DATA_API_TEMPORARY" : "FACEBOOK_AUTOMATION_FAILED" },
+      { status, headers:{ "Cache-Control":"no-store", ...(status===503 ? { "Retry-After":"3" } : {}) } }
     );
   }
 }
