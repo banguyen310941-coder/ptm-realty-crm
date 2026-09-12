@@ -52,6 +52,8 @@ export function FacebookAutomationPanel({ open, onClose, sessionToken, conversat
   const [aiLoading,setAiLoading] = useState(false);
   const [suggestions,setSuggestions] = useState([]);
   const [aiStatus,setAiStatus] = useState(null);
+  const [stats,setStats] = useState({});
+  const [recentFailures,setRecentFailures] = useState([]);
 
   const load = useCallback(async () => {
     if (!open || !sessionToken) return;
@@ -62,6 +64,8 @@ export function FacebookAutomationPanel({ open, onClose, sessionToken, conversat
         requestJson("/api/facebook/ai-suggest", sessionToken).catch(() => ({ ai:null }))
       ]);
       setScenarios(Array.isArray(automation?.scenarios) ? automation.scenarios : []);
+      setStats(automation?.stats || {});
+      setRecentFailures(Array.isArray(automation?.recent_failures) ? automation.recent_failures : []);
       setAiStatus(ai?.ai || null);
       setError("");
     } catch (e) {
@@ -161,6 +165,19 @@ export function FacebookAutomationPanel({ open, onClose, sessionToken, conversat
 
       {error && <div className="suite-error-banner">{error}</div>}
 
+      <div className="facebook-automation-stats">
+        <div className="facebook-automation-stat"><span>Kịch bản đang bật</span><b>{Number(stats.enabled_scenarios || 0)}</b></div>
+        <div className="facebook-automation-stat"><span>Đã gửi 24h</span><b>{Number(stats.sent_24h || 0)}</b></div>
+        <div className="facebook-automation-stat"><span>Đã gửi 7 ngày</span><b>{Number(stats.sent_7d || 0)}</b></div>
+        <div className={"facebook-automation-stat " + (Number(stats.failed_24h || 0) ? "danger" : "")}><span>Lỗi gửi 24h</span><b>{Number(stats.failed_24h || 0)}</b></div>
+      </div>
+      {recentFailures.length > 0 && <div className="facebook-failure-list">
+        {recentFailures.slice(0,3).map((item) => <div className="facebook-failure-item" key={item.id}>
+          <b>{item.scenario_name || "Kịch bản tự động"}</b>
+          <span>{item.error_text || "Không gửi được tin"} · {new Date(item.attempted_at).toLocaleString("vi-VN")}</span>
+        </div>)}
+      </div>}
+
       <div className="facebook-automation-grid">
         <section className="facebook-scenario-list-panel">
           <div className="facebook-automation-section-head">
@@ -172,7 +189,7 @@ export function FacebookAutomationPanel({ open, onClose, sessionToken, conversat
               <div className="facebook-scenario-title">
                 <div>
                   <b>{item.name}</b>
-                  <span>{TRIGGER_LABELS[item.trigger_type] || item.trigger_type} · ưu tiên {item.priority}</span>
+                  <span>{TRIGGER_LABELS[item.trigger_type] || item.trigger_type} · ưu tiên {item.priority} · 7 ngày: {Number(item.sent_7d || 0)} gửi / {Number(item.failed_7d || 0)} lỗi</span>
                 </div>
                 <button className={"facebook-switch " + (item.enabled ? "on" : "")} onClick={() => toggle(item)} type="button">
                   {item.enabled ? "Bật" : "Tắt"}
