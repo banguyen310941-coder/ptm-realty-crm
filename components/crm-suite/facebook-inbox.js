@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { FacebookAutomationPanel } from "@/components/crm-suite/facebook-automation";
+import { FacebookOpsPanel } from "@/components/crm-suite/facebook-ops";
 
 function fmtTime(value) {
   if (!value) return "";
@@ -46,11 +47,44 @@ export function FacebookInboxModule({ sessionToken }) {
   const [automationOpen,setAutomationOpen] = useState(false);
   const [aiReplyLoading,setAiReplyLoading] = useState(false);
   const [aiReplyNote,setAiReplyNote] = useState("");
+  const [opsOpen,setOpsOpen] = useState(false);
+  const [ops,setOps] = useState({ quick_replies:[],tags:[],conversation_tags:[],pages:[],report:{},role:"" });
+  const [search,setSearch] = useState("");
+  const [stateFilter,setStateFilter] = useState("all");
+  const [pageFilter,setPageFilter] = useState("");
+  const [tagFilter,setTagFilter] = useState("");
+
+  const conversationTagMap = useMemo(() => {
+    const map={};
+    for (const item of Array.isArray(ops?.conversation_tags) ? ops.conversation_tags : []) {
+      map[item.conversation_id]=Array.isArray(item.tags) ? item.tags : [];
+    }
+    return map;
+  },[ops?.conversation_tags]);
 
   const selected = useMemo(
     () => inbox.conversations.find((item) => item.id === selectedId) || null,
     [inbox.conversations,selectedId]
   );
+
+  const visibleConversations = useMemo(() => {
+    const needle=search.trim().toLowerCase();
+    return (inbox.conversations || []).filter((item) => {
+      const tags=conversationTagMap[item.id] || [];
+      if (needle) {
+        const hay=[displayName(item),item.last_message_text,item.phone_detected,item.lead_phone,item.owner_name]
+          .filter(Boolean).join(" ").toLowerCase();
+        if (!hay.includes(needle)) return false;
+      }
+      if (pageFilter && item.page_id!==pageFilter) return false;
+      if (tagFilter && !tags.some((tag)=>tag.id===tagFilter)) return false;
+      if (stateFilter==="unread" && Number(item.unread_count||0)<=0) return false;
+      if (stateFilter==="no_phone" && (item.phone_detected || item.lead_phone)) return false;
+      if (stateFilter==="unassigned" && item.owner_id) return false;
+      if (stateFilter==="paused" && !item.automation_paused) return false;
+      return true;
+    });
+  },[inbox.conversations,conversationTagMap,search,stateFilter,pageFilter,tagFilter]);
 
   const loadInbox = useCallback(async (quiet = false) => {
     if (!sessionToken) return;
@@ -68,6 +102,23 @@ export function FacebookInboxModule({ sessionToken }) {
       setError(e.message);
     } finally {
       if (!quiet) setLoading(false);
+    }
+  },[sessionToken]);
+
+  const loadOps = useCallback(async () => {
+    if (!sessionToken) return;
+    try {
+      const data = await requestJson("/api/facebook/ops",sessionToken);
+      setOps({
+        quick_replies:Array.isArray(data?.quick_replies) ? data.quick_replies : [],
+        tags:Array.isArray(data?.tags) ? data.tags : [],
+        conversation_tags:Array.isArray(data?.conversation_tags) ? data.conversation_tags : [],
+        pages:Array.isArray(data?.pages) ? data.pages : [],
+        report:data?.report || {},
+        role:data?.role || ""
+      });
+    } catch (e) {
+      setError(e.message);
     }
   },[sessionToken]);
 
@@ -96,9 +147,11 @@ export function FacebookInboxModule({ sessionToken }) {
 
   useEffect(() => {
     loadInbox();
+    loadOps();
     const timer = setInterval(() => loadInbox(true), 6000);
-    return () => clearInterval(timer);
-  },[loadInbox]);
+    const opsTimer = setInterval(() => loadOps(), 60000);
+    return () => { clearInterval(timer); clearInterval(opsTimer); };
+  },[loadInbox,loadOps]);
 
   useEffect(() => {
     if (!selectedId) {
@@ -149,6 +202,19 @@ export function FacebookInboxModule({ sessionToken }) {
     }
   }
 
+  async function toggleTag(tagId) {
+    if (!selectedId) return;
+    const current=(conversationTagMap[selectedId] || []).map((tag)=>tag.id);
+    const next=current.includes(tagId) ? current.filter((id)=>id!==tagId) : [...current,tagId];
+    try {
+      await requestJson("/api/facebook/ops",sessionToken,{
+        method:"POST",
+        body:JSON.stringify({ action:"set_tags",payload:{ conversation_id:selectedId,tag_ids:next } })
+      });
+      await loadOps();
+    } catch(e) { setError(e.message); }
+  }
+
   async function sendReply(e) {
     e?.preventDefault?.();
     const text = reply.trim();
@@ -175,6 +241,10 @@ export function FacebookInboxModule({ sessionToken }) {
   const runtime = inbox.runtime;
   const conv = thread?.conversation || selected;
   const messages = Array.isArray(thread?.messages) ? thread.messages : [];
+  const convTags = conv ? (conversationTagMap[conv.id] || []) : [];
+  const quickReplies = conv
+    ? (ops.quick_replies || []).filter((item) => !item.page_id || item.page_id===conv.page_id)
+    : [];
 
   return <div className="suite-page facebook-inbox-page">
     <div className="suite-page-head">
@@ -186,7 +256,8 @@ export function FacebookInboxModule({ sessionToken }) {
       <div className="facebook-inbox-head-actions">
         <span className="suite-live">{Number(inbox.unread_total || 0)} chưa đọc</span>
         <button className="suite-btn primary" onClick={() => setAutomationOpen(true)}>⚡ Kịch bản & AI</button>
-        <button className="suite-btn" onClick={() => loadInbox()} disabled={loading}>↻ Làm mới</button>
+        <button className="suite-btn" onClick={() => setOpsOpen(true)}>☷ Vận hành & Báo cáo</button>
+        <button className="suite-btn" onClick={() => { loadInbox(); loadOps(); }} disabled={loading}>↻ Làm mới</button>
       </div>
     </div>
 
@@ -204,15 +275,35 @@ export function FacebookInboxModule({ sessionToken }) {
     <div className="facebook-inbox-shell">
       <aside className="facebook-conversation-panel">
         <div className="facebook-list-head">
-          <div><b>Hội thoại</b><span>{conversations.length} khách</span></div>
+          <div><b>Hội thoại</b><span>{visibleConversations.length}/{conversations.length} khách</span></div>
           {runtime?.graph_version && <small>Graph API {runtime.graph_version}</small>}
+        </div>
+        <div className="facebook-filter-box">
+          <input value={search} onChange={(e)=>setSearch(e.target.value)} placeholder="Tìm tên, SĐT, nội dung…" />
+          <div>
+            <select value={stateFilter} onChange={(e)=>setStateFilter(e.target.value)}>
+              <option value="all">Tất cả trạng thái</option>
+              <option value="unread">Chưa đọc</option>
+              <option value="no_phone">Chưa có SĐT</option>
+              <option value="unassigned">Chưa phân Sale</option>
+              <option value="paused">Bot đang dừng</option>
+            </select>
+            <select value={pageFilter} onChange={(e)=>setPageFilter(e.target.value)}>
+              <option value="">Tất cả Fanpage</option>
+              {(ops.pages||[]).map((p)=><option key={p.page_id} value={p.page_id}>{p.page_name || p.page_id}</option>)}
+            </select>
+          </div>
+          {(ops.tags||[]).length>0 && <select value={tagFilter} onChange={(e)=>setTagFilter(e.target.value)}>
+            <option value="">Tất cả nhãn</option>
+            {(ops.tags||[]).map((tag)=><option key={tag.id} value={tag.id}>{tag.name}</option>)}
+          </select>}
         </div>
 
         <div className="facebook-conversation-list">
           {loading && !conversations.length
             ? <div className="suite-empty">Đang tải hội thoại Fanpage…</div>
-            : conversations.length
-              ? conversations.map((item) => <button
+            : visibleConversations.length
+              ? visibleConversations.map((item) => <button
                   key={item.id}
                   className={"facebook-conversation-item " + (selectedId === item.id ? "active" : "")}
                   onClick={() => setSelectedId(item.id)}
@@ -230,6 +321,9 @@ export function FacebookInboxModule({ sessionToken }) {
                       </em>
                       <em>{item.owner_name || (item.lead_id ? "Đang chờ Sale" : "Chưa tạo lead")}</em>
                     </span>
+                    {(conversationTagMap[item.id]||[]).length>0 && <span className="facebook-conversation-tags">
+                      {(conversationTagMap[item.id]||[]).slice(0,3).map((tag)=><i key={tag.id}>{tag.name}</i>)}
+                    </span>}
                   </span>
                   {Number(item.unread_count || 0) > 0 && <strong className="facebook-unread">{item.unread_count}</strong>}
                 </button>)
@@ -273,6 +367,9 @@ export function FacebookInboxModule({ sessionToken }) {
           <form className="facebook-composer" onSubmit={sendReply}>
             {!conv.within_24h && <div className="facebook-window-note">
               Meta đã đóng cửa sổ phản hồi 24 giờ. CRM khóa gửi tin thường để tránh lỗi/chặn từ Send API.
+            </div>}
+            {quickReplies.length>0 && <div className="facebook-quick-reply-row">
+              {quickReplies.slice(0,6).map((item)=><button type="button" key={item.id} onClick={()=>setReply(item.reply_text)}>{item.title}</button>)}
             </div>}
             <div className="facebook-ai-reply-row">
               <button
@@ -326,6 +423,16 @@ export function FacebookInboxModule({ sessionToken }) {
             <div><span>Messenger PSID</span><b>{String(conv.psid || "").slice(-12)}</b></div>
             <div><span>Bot tự động</span><b>{conv.automation_paused ? "Đang tạm dừng" : "Đang cho phép"}</b></div>
           </div>
+          <div className="facebook-tag-editor">
+            <b>Nhãn khách</b>
+            <div>
+              {(ops.tags||[]).map((tag)=>{
+                const active=convTags.some((item)=>item.id===tag.id);
+                return <button type="button" className={active?"active":""} key={tag.id} onClick={()=>toggleTag(tag.id)}>{tag.name}</button>;
+              })}
+              {!(ops.tags||[]).length && <small>Chưa có nhãn. Tạo trong “Vận hành & Báo cáo”.</small>}
+            </div>
+          </div>
           <div className="facebook-bot-control">
             {conv.automation_paused ? <>
               <p>Sale đang tiếp quản hội thoại. Bot sẽ không tự trả lời cho tới khi hết thời gian tạm dừng.</p>
@@ -353,6 +460,13 @@ export function FacebookInboxModule({ sessionToken }) {
       onClose={() => setAutomationOpen(false)}
       sessionToken={sessionToken}
       conversationId={selectedId}
+    />
+    <FacebookOpsPanel
+      open={opsOpen}
+      onClose={() => setOpsOpen(false)}
+      sessionToken={sessionToken}
+      ops={ops}
+      onRefresh={loadOps}
     />
   </div>;
 }

@@ -132,7 +132,7 @@ export async function POST(request) {
 
         let autoReply = null;
         if (result?.ok && result?.conversation_id && text) {
-          const claimed = await serverRpc("crm_facebook_auto_reply_claim_v2", {
+          const claimed = await serverRpc("crm_facebook_auto_reply_claim_v3", {
             p_secret:secret,
             p_conversation_id:result.conversation_id,
             p_inbound_message_id:messageId || null,

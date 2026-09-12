@@ -38,7 +38,7 @@ export async function GET(request) {
   if (!token) return Response.json({ ok:false, error:"UNAUTHENTICATED" }, { status:401 });
 
   try {
-    const result = await serverRpc("crm_facebook_automation_api_v2", {
+    const result = await serverRpc("crm_facebook_ops_api_v1", {
       p_token:token,
       p_action:"bootstrap",
       p_payload:{}
@@ -46,10 +46,9 @@ export async function GET(request) {
     mergeRuntimePages(result);
     return Response.json(result, { status:statusFor(result), headers:{ "Cache-Control":"no-store" } });
   } catch (error) {
-    return Response.json(
-      { ok:false, error:error?.message || "FACEBOOK_AUTOMATION_FAILED" },
-      { status:500, headers:{ "Cache-Control":"no-store" } }
-    );
+    return Response.json({ ok:false, error:error?.message || "FACEBOOK_OPS_FAILED" }, {
+      status:500, headers:{ "Cache-Control":"no-store" }
+    });
   }
 }
 
@@ -58,19 +57,19 @@ export async function POST(request) {
   if (!token) return Response.json({ ok:false, error:"UNAUTHENTICATED" }, { status:401 });
 
   const body = await request.json().catch(() => ({}));
-  const action = String(body?.action || "save").trim();
+  const action = String(body?.action || "").trim();
+  if (!action) return Response.json({ ok:false, error:"ACTION_REQUIRED" }, { status:400 });
 
   try {
-    const result = await serverRpc("crm_facebook_automation_api_v2", {
+    const result = await serverRpc("crm_facebook_ops_api_v1", {
       p_token:token,
       p_action:action,
       p_payload:body?.payload || {}
     });
     return Response.json(result, { status:statusFor(result), headers:{ "Cache-Control":"no-store" } });
   } catch (error) {
-    return Response.json(
-      { ok:false, error:error?.message || "FACEBOOK_AUTOMATION_FAILED" },
-      { status:500, headers:{ "Cache-Control":"no-store" } }
-    );
+    return Response.json({ ok:false, error:error?.message || "FACEBOOK_OPS_FAILED" }, {
+      status:500, headers:{ "Cache-Control":"no-store" }
+    });
   }
 }

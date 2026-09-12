@@ -1,6 +1,7 @@
 import { bearerToken, serverRpc } from "@/lib/server-data-api";
 import { metaRuntimeStatus } from "@/lib/facebook-meta";
 import { aiGatewayStatus } from "@/lib/ai-gateway";
+import { runFacebookRetryBatch } from "@/lib/facebook-retry";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -30,7 +31,12 @@ export async function GET(request) {
       p_payload:conversationId ? { conversation_id:conversationId } : {}
     });
 
-    if (result?.ok && !conversationId) result.runtime = { ...metaRuntimeStatus(), ai:aiGatewayStatus() };
+    if (result?.ok && !conversationId) {
+      result.runtime = { ...metaRuntimeStatus(), ai:aiGatewayStatus() };
+      result.retry = await runFacebookRetryBatch({ limit:3, minIntervalMs:60000 }).catch((error) => ({
+        ok:false,error:error?.message || "FACEBOOK_RETRY_FAILED"
+      }));
+    }
     return Response.json(result, { status:statusFor(result), headers:{ "Cache-Control":"no-store" } });
   } catch (error) {
     return Response.json(
