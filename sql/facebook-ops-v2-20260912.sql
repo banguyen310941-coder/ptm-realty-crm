@@ -142,8 +142,14 @@ BEGIN
 
   v_is_business :=
     extract(isodow FROM v_local)::integer=ANY(v_page.business_days)
-    AND v_local::time>=v_page.business_start
-    AND v_local::time<v_page.business_end;
+    AND (
+      (v_page.business_start<v_page.business_end
+        AND v_local::time>=v_page.business_start
+        AND v_local::time<v_page.business_end)
+      OR
+      (v_page.business_start>=v_page.business_end
+        AND (v_local::time>=v_page.business_start OR v_local::time<v_page.business_end))
+    );
 
   FOR v_scenario IN
     SELECT s.*
@@ -315,10 +321,9 @@ BEGIN
     SELECT a.id
     FROM public.crm_facebook_auto_reply_attempts a
     JOIN public.crm_facebook_conversations c ON c.id=a.conversation_id
-    WHERE (
-        (a.status='failed' AND a.retryable=true AND coalesce(a.next_retry_at,now())<=now())
-        OR (a.status='claimed' AND a.last_attempt_at<=now()-interval '10 minutes')
-      )
+    WHERE a.status='failed'
+      AND a.retryable=true
+      AND coalesce(a.next_retry_at,now())<=now()
       AND a.retry_count<3
       AND c.last_inbound_at>=now()-interval '24 hours'
       AND NOT (c.automation_paused_until IS NOT NULL AND c.automation_paused_until>now())
@@ -386,6 +391,7 @@ BEGIN
       'sent_24h',(SELECT count(*) FROM public.crm_facebook_auto_reply_attempts WHERE status='sent' AND last_attempt_at>=now()-interval '24 hours'),
       'failed_24h',(SELECT count(*) FROM public.crm_facebook_auto_reply_attempts WHERE status='failed' AND last_attempt_at>=now()-interval '24 hours'),
       'retry_pending',(SELECT count(*) FROM public.crm_facebook_auto_reply_attempts WHERE status='failed' AND retryable=true AND retry_count<3),
+      'stuck_claimed',(SELECT count(*) FROM public.crm_facebook_auto_reply_attempts WHERE status='claimed' AND last_attempt_at<now()-interval '10 minutes'),
       'sent_7d',(SELECT count(*) FROM public.crm_facebook_auto_reply_attempts WHERE status='sent' AND last_attempt_at>=now()-interval '7 days')
     ) INTO v_stats;
 
@@ -580,6 +586,7 @@ BEGIN
     RETURN jsonb_build_object('ok',true);
   ELSIF p_action='save_tag' THEN
     IF v_role NOT IN('ceo','admin','manager','marketing') THEN RETURN jsonb_build_object('ok',false,'error','FORBIDDEN','code','FORBIDDEN'); END IF;
+    IF coalesce(trim(p_payload->>'name'),'')='' THEN RETURN jsonb_build_object('ok',false,'error','Tên nhãn là bắt buộc','code','BAD_REQUEST'); END IF;
     INSERT INTO public.crm_tags(name,color,created_by)
     VALUES(left(trim(p_payload->>'name'),80),coalesce(nullif(left(p_payload->>'color',20),''),'#0f766e'),v_uid)
     ON CONFLICT(name) DO UPDATE SET color=excluded.color
@@ -609,6 +616,7 @@ BEGIN
     RETURN jsonb_build_object('ok',true);
   ELSIF p_action='save_page' THEN
     IF v_role NOT IN('ceo','admin','manager','marketing') THEN RETURN jsonb_build_object('ok',false,'error','FORBIDDEN','code','FORBIDDEN'); END IF;
+    IF coalesce(trim(p_payload->>'page_id'),'')='' THEN RETURN jsonb_build_object('ok',false,'error','Fanpage ID là bắt buộc','code','BAD_REQUEST'); END IF;
     INSERT INTO public.crm_facebook_page_settings(page_id,page_name,timezone,business_days,business_start,business_end,updated_by,updated_at)
     VALUES(
       left(trim(p_payload->>'page_id'),120),nullif(left(trim(p_payload->>'page_name'),160),''),
