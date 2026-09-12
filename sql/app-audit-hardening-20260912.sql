@@ -29,6 +29,7 @@ DECLARE
   raw_token text;
   v_email_hash text:=encode(digest(lower(trim(coalesce(p_email,''))),'sha256'),'hex');
   v_guard public.crm_login_guard%ROWTYPE;
+  v_guard_found boolean:=false;
   v_failures integer;
 BEGIN
   DELETE FROM public.crm_sessions WHERE expires_at<=now();
@@ -38,8 +39,9 @@ BEGIN
   FROM public.crm_login_guard
   WHERE email_hash=v_email_hash
   FOR UPDATE;
+  v_guard_found:=FOUND;
 
-  IF FOUND AND v_guard.locked_until IS NOT NULL AND v_guard.locked_until>now() THEN
+  IF v_guard_found AND v_guard.locked_until IS NOT NULL AND v_guard.locked_until>now() THEN
     RETURN jsonb_build_object('ok',false,'error','Đăng nhập tạm thời bị giới hạn. Vui lòng thử lại sau vài phút.');
   END IF;
 
@@ -50,7 +52,7 @@ BEGIN
   LIMIT 1;
 
   IF u.id IS NULL OR NOT public.crm_verify_password(coalesce(p_password,''),u.password_hash) THEN
-    IF NOT FOUND THEN
+    IF NOT v_guard_found THEN
       INSERT INTO public.crm_login_guard(email_hash,failure_count,window_started_at,updated_at)
       VALUES(v_email_hash,1,now(),now())
       ON CONFLICT(email_hash) DO NOTHING;
