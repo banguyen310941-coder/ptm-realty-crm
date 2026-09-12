@@ -108,8 +108,8 @@ function normalize(body, sourceHint) {
   };
 }
 
-function suppliedSecret(request, url) {
-  return request.headers.get("x-ptm-webhook-secret") || bearerToken(request) || url.searchParams.get("token") || "";
+function suppliedSecret(request) {
+  return request.headers.get("x-ptm-webhook-secret") || bearerToken(request) || "";
 }
 
 export async function GET(request) {
@@ -134,8 +134,14 @@ export async function GET(request) {
 export async function POST(request) {
   const url = new URL(request.url);
   try {
-    const secret = suppliedSecret(request, url);
-    if (!secret) return Response.json({ ok:false, error:"WEBHOOK_SECRET_REQUIRED" }, { status:401 });
+    if (url.searchParams.has("token")) {
+      return Response.json(
+        { ok:false, error:"QUERY_SECRET_NOT_ALLOWED", hint:"Dùng header x-ptm-webhook-secret hoặc Authorization: Bearer." },
+        { status:400, headers:{ "Cache-Control":"no-store" } }
+      );
+    }
+    const secret = suppliedSecret(request);
+    if (!secret) return Response.json({ ok:false, error:"WEBHOOK_SECRET_REQUIRED" }, { status:401, headers:{ "Cache-Control":"no-store" } });
 
     const body = await request.json().catch(() => ({}));
     const lead = normalize(body, url.searchParams.get("source") || "");
