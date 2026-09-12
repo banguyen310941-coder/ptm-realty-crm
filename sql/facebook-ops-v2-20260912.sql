@@ -572,7 +572,6 @@ BEGIN
       END LOOP;
     END IF;
     IF EXISTS(SELECT 1 FROM public.crm_facebook_conversations WHERE id=v_conv AND lead_id IS NOT NULL) THEN
-      DELETE FROM public.crm_lead_tags WHERE lead_id=(SELECT lead_id FROM public.crm_facebook_conversations WHERE id=v_conv);
       INSERT INTO public.crm_lead_tags(lead_id,tag_id)
       SELECT c.lead_id,ct.tag_id FROM public.crm_facebook_conversations c
       JOIN public.crm_facebook_conversation_tags ct ON ct.conversation_id=c.id
