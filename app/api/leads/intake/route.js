@@ -160,7 +160,11 @@ export async function POST(request) {
 
     const result = await serverRpc("crm_lead_intake_v1", { p_secret:secret, p_lead:lead });
     if (!result?.ok) {
-      const status = result?.error === "INVALID_WEBHOOK_SECRET" ? 401 : result?.error === "PHONE_REQUIRED" ? 400 : 400;
+      const status = result?.error === "INVALID_WEBHOOK_SECRET"
+        ? 401
+        : result?.code === "IDENTITY_CONFLICT"
+          ? 409
+          : 400;
       return Response.json(result, { status, headers:{ "Cache-Control":"no-store" } });
     }
     return Response.json(result, { status:result.duplicate ? 200 : 201, headers:{ "Cache-Control":"no-store" } });
