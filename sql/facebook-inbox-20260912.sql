@@ -302,7 +302,7 @@ BEGIN
       )
     LIMIT 1;
 
-    IF v_row.id IS NULL THEN
+    IF NOT FOUND THEN
       RETURN jsonb_build_object('ok',false,'error','Không tìm thấy hội thoại hoặc bạn không có quyền truy cập','code','NOT_FOUND');
     END IF;
 
