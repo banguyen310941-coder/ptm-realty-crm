@@ -33,7 +33,9 @@ export async function GET(request) {
 
     if (result?.ok && !conversationId) {
       result.runtime = { ...metaRuntimeStatus(), ai:aiGatewayStatus() };
-      runFacebookRetryBatch({ limit:3, minIntervalMs:60000 }).catch(() => {});
+      result.retry = await runFacebookRetryBatch({ limit:3, minIntervalMs:60000 }).catch((error) => ({
+        ok:false,error:error?.message || "FACEBOOK_RETRY_FAILED"
+      }));
     }
     return Response.json(result, { status:statusFor(result), headers:{ "Cache-Control":"no-store" } });
   } catch (error) {
