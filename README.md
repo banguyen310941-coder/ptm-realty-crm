@@ -59,6 +59,36 @@ CRM hỗ trợ:
 
 Webhook secret và Meta verify token chỉ được lưu dạng **SHA-256 hash trong Neon**, không commit secret thật vào GitHub.
 
+## Chat Fanpage / Meta Messenger
+
+CRM có module **Chat Fanpage** ngay trong giao diện, theo mô hình inbox tập trung giống các công cụ social CRM:
+
+- Nhận tin nhắn Messenger qua webhook Meta và lưu hội thoại trong CRM.
+- Kiểm tra chữ ký `X-Hub-Signature-256` bằng Meta App Secret ở server.
+- Tự nhận diện số điện thoại Việt Nam khi khách gửi trong nội dung chat.
+- Tự ghép với khách hàng cũ theo SĐT; nếu chưa có thì tạo lead nguồn **Facebook**.
+- Lead mới tự đi qua trigger phân Sale 10 phút hiện có, không tạo cơ chế chia khách thứ hai.
+- Sale được phân khách có thể xem và trả lời hội thoại ngay trong CRM.
+- Hiển thị tin chưa đọc, Sale phụ trách, trạng thái khách và cửa sổ phản hồi 24 giờ.
+- Hỗ trợ nhiều Fanpage qua cấu hình `PTM_META_PAGES_JSON`.
+- Chống ghi trùng bằng Meta Message ID.
+
+Endpoint:
+
+- `GET|POST /api/facebook/webhook` — Meta webhook verify + nhận Messenger event.
+- `GET|POST /api/facebook/inbox` — danh sách hội thoại, nội dung chat, đánh dấu đã đọc.
+- `POST /api/facebook/send` — gửi phản hồi Messenger từ CRM.
+
+Biến môi trường server-side cần cấu hình trên Vercel:
+
+- `PTM_META_APP_SECRET`
+- `PTM_META_PAGE_ID` + `PTM_META_PAGE_ACCESS_TOKEN` cho một Fanpage; hoặc `PTM_META_PAGES_JSON` cho nhiều Fanpage.
+- `PTM_META_GRAPH_VERSION` — mặc định `v26.0`.
+
+Database cần chạy migration `sql/facebook-inbox-20260912.sql`. Sau đó provision hash của Meta App Secret vào `crm_integration_config` với key `meta_app_secret`, và giữ verify token webhook Meta ở key `meta_verify`. Không commit secret thật vào GitHub.
+
+> Messenger không cung cấp tùy ý số điện thoại riêng tư của người dùng cho Page. CRM chỉ tự bắt SĐT khi khách chủ động gửi số trong hội thoại, hoặc khi dữ liệu lead/form hợp lệ đã cung cấp số qua luồng lead intake.
+
 ## Automation
 
 Automation được cấu hình từ `crm_automation_rules` và chạy qua RPC bảo mật.
@@ -118,10 +148,13 @@ Kho mộ phần là dữ liệu sản phẩm thật và được giữ tách bi�
 ## API kiểm tra vận hành
 
 - `GET /api/health` — database/auth readiness
-- `GET /api/integrations/status` — readiness của lead webhook, Meta, Email, Zalo
+- `GET /api/integrations/status` — readiness của lead webhook, Meta Messenger, Email, Zalo
 - `POST /api/automation/event` — phát automation event từ phiên CRM hợp lệ
 - `POST /api/automation/run` — sweep automation từ phiên CRM hợp lệ
 - `GET|POST /api/leads/intake` — verify/nhận lead đa nguồn
+- `GET|POST /api/facebook/webhook` — webhook Messenger
+- `GET|POST /api/facebook/inbox` — inbox Fanpage trong CRM
+- `POST /api/facebook/send` — gửi tin Messenger từ CRM
 
 ## SQL versioned
 

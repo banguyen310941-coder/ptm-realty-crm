@@ -7,6 +7,7 @@ import "./finance.css";
 import "./inventory-wave2.css";
 import "./cemetery.css";
 import "./automation.css";
+import "./facebook-inbox.css";
 import AttendanceLauncher from "@/components/attendance-launcher";
 import LeadOfferAlert from "@/components/lead-offer-alert";
 import CustomerQuickLauncher from "@/components/customer-quick-launcher";
