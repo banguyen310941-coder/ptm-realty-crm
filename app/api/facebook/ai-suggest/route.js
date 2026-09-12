@@ -36,7 +36,7 @@ export async function POST(request) {
   const conversationId = String(body?.conversation_id || "").trim();
 
   try {
-    const automation = await serverRpc("crm_facebook_automation_api_v1", {
+    const automation = await serverRpc("crm_facebook_automation_api_v2", {
       p_token:token,
       p_action:"bootstrap",
       p_payload:{}
