@@ -10,6 +10,12 @@ const TRIGGER_LABELS = {
   always:"Mọi tin nhắn"
 };
 
+const SCHEDULE_LABELS = {
+  always:"Mọi thời điểm",
+  business_hours:"Trong giờ làm việc",
+  after_hours:"Ngoài giờ làm việc"
+};
+
 function emptyScenario() {
   return {
     id:"",
@@ -19,7 +25,9 @@ function emptyScenario() {
     response_text:"",
     enabled:true,
     priority:50,
-    cooldown_minutes:120
+    cooldown_minutes:120,
+    page_id:"",
+    schedule_scope:"always"
   };
 }
 
@@ -54,6 +62,7 @@ export function FacebookAutomationPanel({ open, onClose, sessionToken, conversat
   const [aiStatus,setAiStatus] = useState(null);
   const [stats,setStats] = useState({});
   const [recentFailures,setRecentFailures] = useState([]);
+  const [pages,setPages] = useState([]);
 
   const load = useCallback(async () => {
     if (!open || !sessionToken) return;
@@ -66,6 +75,7 @@ export function FacebookAutomationPanel({ open, onClose, sessionToken, conversat
       setScenarios(Array.isArray(automation?.scenarios) ? automation.scenarios : []);
       setStats(automation?.stats || {});
       setRecentFailures(Array.isArray(automation?.recent_failures) ? automation.recent_failures : []);
+      setPages(Array.isArray(automation?.pages) ? automation.pages : []);
       setAiStatus(ai?.ai || null);
       setError("");
     } catch (e) {
@@ -88,7 +98,9 @@ export function FacebookAutomationPanel({ open, onClose, sessionToken, conversat
       response_text:item?.response_text || "",
       enabled:item?.enabled !== false,
       priority:Number(item?.priority || 50),
-      cooldown_minutes:Number(item?.cooldown_minutes || 120)
+      cooldown_minutes:Number(item?.cooldown_minutes || 120),
+      page_id:item?.page_id || "",
+      schedule_scope:item?.schedule_scope || "always"
     });
   }
 
@@ -189,7 +201,7 @@ export function FacebookAutomationPanel({ open, onClose, sessionToken, conversat
               <div className="facebook-scenario-title">
                 <div>
                   <b>{item.name}</b>
-                  <span>{TRIGGER_LABELS[item.trigger_type] || item.trigger_type} · ưu tiên {item.priority} · 7 ngày: {Number(item.sent_7d || 0)} gửi / {Number(item.failed_7d || 0)} lỗi</span>
+                  <span>{TRIGGER_LABELS[item.trigger_type] || item.trigger_type} · {SCHEDULE_LABELS[item.schedule_scope] || "Mọi thời điểm"} · {item.page_id ? (pages.find((p)=>p.page_id===item.page_id)?.page_name || item.page_id) : "Tất cả Fanpage"} · ưu tiên {item.priority} · 7 ngày: {Number(item.sent_7d || 0)} gửi / {Number(item.failed_7d || 0)} lỗi</span>
                 </div>
                 <button className={"facebook-switch " + (item.enabled ? "on" : "")} onClick={() => toggle(item)} type="button">
                   {item.enabled ? "Bật" : "Tắt"}
@@ -216,6 +228,15 @@ export function FacebookAutomationPanel({ open, onClose, sessionToken, conversat
             <label>Điều kiện<select value={editing.trigger_type} onChange={(e) => setEditing({ ...editing, trigger_type:e.target.value })}>
               {Object.entries(TRIGGER_LABELS).map(([value,label]) => <option value={value} key={value}>{label}</option>)}
             </select></label>
+            <div className="facebook-form-two">
+              <label>Fanpage<select value={editing.page_id || ""} onChange={(e)=>setEditing({ ...editing,page_id:e.target.value })}>
+                <option value="">Tất cả Fanpage</option>
+                {pages.map((page)=><option key={page.page_id} value={page.page_id}>{page.page_name || page.page_id}</option>)}
+              </select></label>
+              <label>Khung giờ<select value={editing.schedule_scope || "always"} onChange={(e)=>setEditing({ ...editing,schedule_scope:e.target.value })}>
+                {Object.entries(SCHEDULE_LABELS).map(([value,label])=><option key={value} value={value}>{label}</option>)}
+              </select></label>
+            </div>
             {editing.trigger_type === "keyword" && <label>Từ khóa<input
               value={(editing.keywords || []).join(", ")}
               onChange={(e) => setEditing({ ...editing, keywords:e.target.value.split(",").map((x) => x.trim()).filter(Boolean) })}
@@ -265,7 +286,9 @@ export function FacebookAutomationPanel({ open, onClose, sessionToken, conversat
                   response_text:item.response_text,
                   enabled:false,
                   priority:item.priority || 50,
-                  cooldown_minutes:item.cooldown_minutes || 120
+                  cooldown_minutes:item.cooldown_minutes || 120,
+                  page_id:"",
+                  schedule_scope:"always"
                 });
               }}>Dùng đề xuất này</button>
             </article>)}
