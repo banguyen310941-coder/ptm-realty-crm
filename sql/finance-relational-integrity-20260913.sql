@@ -2,6 +2,29 @@
 -- Prevent contracts/payments from pointing at a different lead/deal/property
 -- than their parent business records.
 
+CREATE OR REPLACE FUNCTION public.crm_deal_finance_guard_v1()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'public','pg_temp'
+AS $function$
+BEGIN
+  IF NEW.lead_id IS DISTINCT FROM OLD.lead_id
+     OR NEW.property_id IS DISTINCT FROM OLD.property_id THEN
+
+    IF EXISTS(
+      SELECT 1 FROM public.crm_contracts c WHERE c.deal_id=OLD.id
+    ) OR EXISTS(
+      SELECT 1 FROM public.crm_payments p WHERE p.deal_id=OLD.id
+    ) THEN
+      RAISE EXCEPTION 'Giao dịch đã có hợp đồng/thanh toán; không thể đổi khách hàng hoặc mộ phần.';
+    END IF;
+  END IF;
+
+  RETURN NEW;
+END
+$function$;
+
 CREATE OR REPLACE FUNCTION public.crm_contract_consistency_guard_v1()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -85,6 +108,13 @@ BEGIN
 END
 $function$;
 
+DROP TRIGGER IF EXISTS crm_deal_finance_guard ON public.deals;
+CREATE TRIGGER crm_deal_finance_guard
+BEFORE UPDATE OF lead_id,property_id
+ON public.deals
+FOR EACH ROW
+EXECUTE FUNCTION public.crm_deal_finance_guard_v1();
+
 DROP TRIGGER IF EXISTS crm_contract_consistency_guard ON public.crm_contracts;
 CREATE TRIGGER crm_contract_consistency_guard
 BEFORE INSERT OR UPDATE OF deal_id,lead_id,property_id
@@ -99,6 +129,7 @@ ON public.crm_payments
 FOR EACH ROW
 EXECUTE FUNCTION public.crm_payment_consistency_guard_v1();
 
+REVOKE ALL ON FUNCTION public.crm_deal_finance_guard_v1() FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.crm_contract_consistency_guard_v1() FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.crm_payment_consistency_guard_v1() FROM PUBLIC;
 
