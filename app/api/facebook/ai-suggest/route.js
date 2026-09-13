@@ -23,8 +23,27 @@ function cleanSuggestion(item, index) {
   };
 }
 
-export async function GET() {
-  return Response.json({ ok:true, ai:aiGatewayStatus() }, { headers:{ "Cache-Control":"no-store" } });
+export async function GET(request) {
+  const token = bearerToken(request);
+  if (!token) {
+    return Response.json({ ok:false,error:"UNAUTHENTICATED" }, { status:401,headers:{ "Cache-Control":"no-store" } });
+  }
+
+  try {
+    const auth = await serverRpc("crm_auth_context_v1",{ p_token:token });
+    if (!auth?.ok) {
+      return Response.json(auth || { ok:false,error:"UNAUTHENTICATED" }, { status:401,headers:{ "Cache-Control":"no-store" } });
+    }
+    if (!new Set(["ceo","admin","manager","marketing"]).has(String(auth?.user?.role || ""))) {
+      return Response.json({ ok:false,error:"FORBIDDEN" }, { status:403,headers:{ "Cache-Control":"no-store" } });
+    }
+    return Response.json({ ok:true,ai:aiGatewayStatus() }, { headers:{ "Cache-Control":"no-store" } });
+  } catch (error) {
+    return Response.json(
+      { ok:false,error:error?.message || "AI_STATUS_FAILED" },
+      { status:serverRpcErrorStatus(error),headers:{ "Cache-Control":"no-store" } }
+    );
+  }
 }
 
 export async function POST(request) {
