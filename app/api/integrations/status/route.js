@@ -4,7 +4,12 @@ import { aiGatewayStatus } from "@/lib/ai-gateway";
 
 export const dynamic = "force-dynamic";
 
-const ALLOWED_ROLES = new Set(["admin","ceo","manager","marketing"]);
+function resultStatus(result) {
+  if (result?.ok) return 200;
+  if (result?.code === "UNAUTHENTICATED") return 401;
+  if (result?.code === "FORBIDDEN") return 403;
+  return 503;
+}
 
 export async function GET(request) {
   const token = bearerToken(request);
@@ -16,33 +21,24 @@ export async function GET(request) {
   }
 
   try {
-    const auth = await serverRpc("crm_auth_context_v1",{ p_token:token });
-    if (!auth?.ok) {
+    // Authorization is enforced inside the RPC as well as at the HTTP boundary.
+    // This prevents bypass through the directly reachable Neon Data API.
+    const result = await serverRpc("crm_integration_status_v2",{ p_token:token });
+
+    if (!result?.ok) {
       return Response.json(
-        { ok:false,error:auth?.error || "UNAUTHENTICATED",code:auth?.code || "UNAUTHENTICATED" },
-        { status:401,headers:{ "Cache-Control":"no-store" } }
+        result || { ok:false,error:"INTEGRATION_STATUS_FAILED" },
+        { status:resultStatus(result),headers:{ "Cache-Control":"no-store" } }
       );
     }
 
-    const role = String(auth?.user?.role || "");
-    if (!ALLOWED_ROLES.has(role)) {
-      return Response.json(
-        { ok:false,error:"FORBIDDEN" },
-        { status:403,headers:{ "Cache-Control":"no-store" } }
-      );
-    }
-
-    const result = await serverRpc("crm_integration_status_v1",{});
     return Response.json(
       {
-        ...(result || { ok:false,database:false }),
+        ...result,
         facebook_messaging_runtime:metaRuntimeStatus(),
         ai_gateway_runtime:aiGatewayStatus()
       },
-      {
-        status:result?.ok ? 200 : 503,
-        headers:{ "Cache-Control":"no-store" }
-      }
+      { status:200,headers:{ "Cache-Control":"no-store" } }
     );
   } catch (error) {
     const status = serverRpcErrorStatus(error);
