@@ -11,7 +11,8 @@ DECLARE
   v_id uuid:=nullif(p_payload->>'id','')::uuid;
   v_name text:=nullif(trim(p_payload->>'name'),'');
   v_email text:=nullif(lower(trim(p_payload->>'email')),'');
-  v_role text:=coalesce(nullif(p_payload->>'role',''),'sale');
+  v_role text:=nullif(p_payload->>'role','');
+  v_current_role text;
   v_pw text:=coalesce(p_payload->>'password','');
   v_employee_code text:=nullif(trim(p_payload->>'employee_code'),'');
   v_phone text:=nullif(trim(p_payload->>'phone'),'');
@@ -35,6 +36,17 @@ BEGIN
   LIMIT 1;
 
   IF v_admin IS NULL THEN RETURN jsonb_build_object('ok',false,'error','Chỉ Admin được quản lý tài khoản'); END IF;
+
+  IF v_id IS NULL THEN
+    v_role:=coalesce(v_role,'sale');
+  ELSE
+    SELECT role INTO v_current_role FROM public.users WHERE id=v_id;
+    IF v_current_role IS NULL THEN
+      RETURN jsonb_build_object('ok',false,'error','Không tìm thấy tài khoản');
+    END IF;
+    v_role:=coalesce(v_role,v_current_role);
+  END IF;
+
   IF v_role NOT IN ('ceo','admin','manager','marketing','sale','accounting') THEN
     RETURN jsonb_build_object('ok',false,'error','Vai trò không hợp lệ');
   END IF;
