@@ -1,10 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { client, SESSION_KEY } from "@/lib/crm-client";
+import { directRpc, sessionRpc } from "@/lib/crm-client";
 import { roleLabel } from "@/lib/rbac";
 
-function unwrap(data) { return Array.isArray(data) ? data[0] : data; }
 
 async function compressImage(file) {
   const dataUrl = await new Promise((resolve, reject) => {
@@ -43,36 +42,32 @@ export default function AttendanceLauncher() {
   const [note, setNote] = useState("");
 
   useEffect(() => {
-    const read = () => {
-      const raw = localStorage.getItem(SESSION_KEY);
-      try { setSession(raw ? JSON.parse(raw) : null); } catch { setSession(null); }
-    };
-    read();
-    const timer = setInterval(read, 1500);
-    return () => clearInterval(timer);
+    let stopped=false;
+    sessionRpc().then((out)=>{
+      if(!stopped)setSession({ token:"cookie",user:out.user });
+    }).catch(()=>{ if(!stopped)setSession(null); });
+    const onSession=(event)=>setSession(event.detail?.user ? { token:"cookie",user:event.detail.user } : null);
+    window.addEventListener("ptm-crm-session",onSession);
+    return () => { stopped=true; window.removeEventListener("ptm-crm-session",onSession); };
   }, []);
 
   useEffect(() => {
-    if (open && session?.token) refresh();
-  }, [open, session?.token]);
+    if (open && session?.user) refresh();
+  }, [open, session?.user?.id]);
 
-  async function call(name, args) {
-    const { data, error: rpcError } = await client.rpc(name, args);
-    if (rpcError) throw new Error(rpcError.message || "Chức năng điểm danh chưa được kích hoạt trên database chính.");
-    const out = unwrap(data);
-    if (!out?.ok) throw new Error(out?.error || "Thao tác thất bại");
-    return out;
+  async function call(action,payload={}) {
+    return directRpc(action,payload);
   }
 
   async function refresh() {
-    if (!session?.token) return;
+    if (!session?.user) return;
     setBusy(true); setError("");
     try {
-      const s = await call("crm_attendance_status", { p_token: session.token });
+      const s = await call("attendance.status");
       setStatus(s);
       if (["admin", "ceo", "manager"].includes(session.user?.role)) {
         try {
-          const t = await call("crm_team_attendance", { p_token: session.token });
+          const t = await call("attendance.team");
           setTeam(t.employees || []);
         } catch { setTeam([]); }
       }
@@ -84,8 +79,7 @@ export default function AttendanceLauncher() {
     setBusy(true); setError("");
     try {
       if (mode === "client_visit" && !photo) throw new Error("Ra ngoài gặp khách bắt buộc phải chụp ảnh điểm danh.");
-      await call("crm_check_in", {
-        p_token: session.token,
+      await call("attendance.check_in", {
         p_work_mode: mode,
         p_evening_opt_in: false,
         p_photo_data: photo || null,
@@ -100,7 +94,7 @@ export default function AttendanceLauncher() {
 
   async function checkOut() {
     setBusy(true); setError("");
-    try { await call("crm_check_out", { p_token: session.token }); await refresh(); }
+    try { await call("attendance.check_out"); await refresh(); }
     catch (e) { setError(e.message); }
     finally { setBusy(false); }
   }
