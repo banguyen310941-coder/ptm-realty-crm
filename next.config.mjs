@@ -10,7 +10,7 @@ const CONTENT_SECURITY_POLICY = [
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob:",
   "font-src 'self' data:",
-  "connect-src 'self' https://*.aws.neon.tech",
+  "connect-src 'self'",
   "worker-src 'self' blob:",
   "manifest-src 'self'",
   "media-src 'self' data: blob:",
