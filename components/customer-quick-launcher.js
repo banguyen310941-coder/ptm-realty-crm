@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { coreRpc, fullRpc, SESSION_KEY } from "@/lib/crm-client";
+import { coreRpc, fullRpc, sessionRpc } from "@/lib/crm-client";
 
 const STATUS=[
   ["new","Khách mới"],
@@ -29,7 +29,13 @@ export default function CustomerQuickLauncher(){
   const[busy,setBusy]=useState(false);
   const[error,setError]=useState("");
 
-  useEffect(()=>{const read=()=>{try{const raw=localStorage.getItem(SESSION_KEY);setSession(raw?JSON.parse(raw):null)}catch{setSession(null)}};read();const t=setInterval(read,1200);return()=>clearInterval(t)},[]);
+  useEffect(()=>{
+    let stopped=false;
+    sessionRpc().then((out)=>{if(!stopped)setSession({token:"cookie",user:out.user})}).catch(()=>{if(!stopped)setSession(null)});
+    const onSession=(event)=>setSession(event.detail?.user?{token:"cookie",user:event.detail.user}:null);
+    window.addEventListener("ptm-crm-session",onSession);
+    return()=>{stopped=true;window.removeEventListener("ptm-crm-session",onSession)};
+  },[]);
   const role=session?.user?.role;
   const allowed=["admin","ceo","manager","marketing","sale"].includes(role);
   const sales=useMemo(()=>data?.users?.filter(u=>u.role==="sale"&&u.active!==false)||[],[data]);

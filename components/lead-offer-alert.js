@@ -1,9 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { automationEvent, client, SESSION_KEY } from "@/lib/crm-client";
+import { automationEvent, directRpc, sessionRpc } from "@/lib/crm-client";
 
-function unwrap(data) { return Array.isArray(data) ? data[0] : data; }
 
 export default function LeadOfferAlert() {
   const [session, setSession] = useState(null);
@@ -19,13 +18,13 @@ export default function LeadOfferAlert() {
   const secondsLeft = useMemo(() => active ? Math.max(0, Math.ceil((new Date(active.expires_at).getTime() - now) / 1000)) : 0, [active, now]);
 
   useEffect(() => {
-    const read = () => {
-      const raw = localStorage.getItem(SESSION_KEY);
-      try { setSession(raw ? JSON.parse(raw) : null); } catch { setSession(null); }
-    };
-    read();
-    const timer = setInterval(read, 1500);
-    return () => clearInterval(timer);
+    let stopped=false;
+    sessionRpc().then((out)=>{
+      if(!stopped)setSession({ token:"cookie",user:out.user });
+    }).catch(()=>{ if(!stopped)setSession(null); });
+    const onSession=(event)=>setSession(event.detail?.user ? { token:"cookie",user:event.detail.user } : null);
+    window.addEventListener("ptm-crm-session",onSession);
+    return () => { stopped=true; window.removeEventListener("ptm-crm-session",onSession); };
   }, []);
 
   useEffect(() => {
@@ -40,7 +39,7 @@ export default function LeadOfferAlert() {
   }, []);
 
   useEffect(() => {
-    if (!session?.token || session.user?.role !== "sale") {
+    if (!session?.user || session.user?.role !== "sale") {
       setOffers([]);
       setError("");
       return;
@@ -49,8 +48,8 @@ export default function LeadOfferAlert() {
     let stopped = false;
     const poll = async () => {
       try {
-        await call("crm_lead_offer_tick", { p_token:session.token }, false);
-        const out = await call("crm_my_lead_offers", { p_token:session.token }, false);
+        await call("lead_offer.tick", {}, false);
+        const out = await call("lead_offer.mine", {}, false);
         if (!stopped) {
           setOffers(out.offers || []);
           setError("");
@@ -65,7 +64,7 @@ export default function LeadOfferAlert() {
     poll();
     const timer = setInterval(poll,5000);
     return () => { stopped=true; clearInterval(timer); };
-  },[session?.token,session?.user?.role]);
+  },[session?.user?.id,session?.user?.role]);
 
   useEffect(() => {
     if (!active?.offer_id) return;
@@ -78,16 +77,14 @@ export default function LeadOfferAlert() {
     return () => clearInterval(timer);
   }, [active?.offer_id]);
 
-  async function call(name, args, throwMissing = true) {
-    const { data, error: rpcError } = await client.rpc(name, args);
-    if (rpcError) {
-      const message = rpcError.message || "Không kết nối được hệ thống phân lead.";
-      if (!throwMissing && /schema cache|could not find|PGRST202/i.test(message)) throw new Error("Chức năng phân lead 10 phút chưa được kích hoạt trên database chính.");
-      throw new Error(message);
+  async function call(action,payload={},throwMissing=true) {
+    try { return await directRpc(action,payload); }
+    catch(error) {
+      if(!throwMissing && (error?.code==="PGRST202" || /schema cache|could not find/i.test(error?.message||""))) {
+        throw new Error("Chức năng phân lead 10 phút chưa được kích hoạt trên database chính.");
+      }
+      throw error;
     }
-    const out = unwrap(data);
-    if (!out?.ok) throw new Error(out?.error || "Thao tác thất bại");
-    return out;
   }
 
   async function enableAudio() {
@@ -153,11 +150,11 @@ export default function LeadOfferAlert() {
   }
 
   async function acceptOffer() {
-    if (!active || !session?.token) return;
+    if (!active || !session?.user) return;
     setBusy(true); setError("");
     try {
       await enableAudio();
-      await call("crm_accept_lead_offer", { p_token: session.token, p_offer_id: active.offer_id });
+      await call("lead_offer.accept", { p_offer_id: active.offer_id });
       await automationEvent("lead_accepted", { lead_id:active.lead_id, owner_id:session.user?.id || null, payload:{ offer_id:active.offer_id } }).catch(() => {});
       announcedRef.current.delete(active.offer_id);
       setOffers((rows) => rows.filter((x) => x.offer_id !== active.offer_id));
@@ -165,7 +162,7 @@ export default function LeadOfferAlert() {
     } catch (e) {
       setError(e.message);
       try {
-        const out = await call("crm_my_lead_offers", { p_token: session.token });
+        const out = await call("lead_offer.mine");
         setOffers(out.offers || []);
       } catch {}
     } finally { setBusy(false); }

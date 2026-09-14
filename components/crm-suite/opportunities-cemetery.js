@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { cemeteryRpc, compactMoney, fmtDate, SESSION_KEY } from "@/lib/crm-client";
+import { cemeteryRpc, compactMoney, fmtDate } from "@/lib/crm-client";
 
 const STAGES = [
   ["qualify", "Đánh giá", 10], ["consult", "Tư vấn", 25], ["visit", "Đi xem", 45], ["booking", "Giữ chỗ", 65],
@@ -10,11 +10,8 @@ const STAGES = [
 
 const EMPTY_FORM={id:"",name:"Tư vấn Thiên Phúc",lead_id:"",plot_code:"",property_id:"",owner_id:"",stage:"qualify",status:"open",value:"",probability:10,expected_close_date:"",notes:""};
 
-function fallbackCemeteryAction(action, payload) {
-  let token = "";
-  try { token = JSON.parse(localStorage.getItem(SESSION_KEY) || "null")?.token || ""; } catch {}
-  if (!token) throw new Error("Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.");
-  return cemeteryRpc(token, action, payload);
+function fallbackCemeteryAction(action,payload) {
+  return cemeteryRpc("cookie",action,payload);
 }
 
 function codeFromName(name=""){return String(name).replace(/^Mộ phần\s+/i,"").replace(/^Mộ\s+/i,"").trim()}

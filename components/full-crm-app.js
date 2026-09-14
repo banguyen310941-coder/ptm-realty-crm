@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { SESSION_KEY, coreRpc, fullRpc, financeRpc, cemeteryRpc, loginRpc, fmtDate } from "@/lib/crm-client";
+import { SESSION_KEY, coreRpc, fullRpc, financeRpc, cemeteryRpc, loginRpc, sessionRpc, logoutRpc, fmtDate } from "@/lib/crm-client";
 import { getPermissions, roleLabel } from "@/lib/rbac";
 import { ExecutiveDashboard, ReportsModule } from "@/components/crm-suite/dashboard-reports";
 import { CustomersModule } from "@/components/crm-suite/customers";
@@ -31,14 +31,27 @@ function allowed(item,data,permissions){const role=data?.user?.role;if(item.id==
 
 export default function FullCRMApp(){
   const[session,setSession]=useState(null),[data,setData]=useState(null),[full,setFull]=useState(EMPTY_FULL),[finance,setFinance]=useState(EMPTY_FINANCE);
-  const[fullReady,setFullReady]=useState(true),[financeReady,setFinanceReady]=useState(true),[view,setView]=useState("dashboard"),[busy,setBusy]=useState(false),[error,setError]=useState("");
+  const[fullReady,setFullReady]=useState(true),[financeReady,setFinanceReady]=useState(true),[view,setView]=useState("dashboard"),[busy,setBusy]=useState(false),[error,setError]=useState(""),[authReady,setAuthReady]=useState(false);
   const[login,setLogin]=useState({email:"",password:""}),[noticeOpen,setNoticeOpen]=useState(false);
   const permissions=getPermissions(data||{user:session?.user});
   const visibleNav=useMemo(()=>NAV.filter(n=>data?allowed(n,data,permissions):true),[data,permissions]);
   const unread=(full.notifications||[]).filter(n=>!n.read_at).length;
   const cemeteryAction=useCallback((action,payload={})=>cemeteryRpc(session?.token,action,payload),[session?.token]);
 
-  useEffect(()=>{const raw=localStorage.getItem(SESSION_KEY);if(!raw)return;try{const s=JSON.parse(raw);setSession(s);load(s.token);}catch{localStorage.removeItem(SESSION_KEY)}},[]);
+  useEffect(()=>{
+    let stopped=false;
+    localStorage.removeItem(SESSION_KEY);
+    sessionRpc().then(async(out)=>{
+      if(stopped)return;
+      const s={token:"cookie",user:out.user};
+      setSession(s);
+      window.dispatchEvent(new CustomEvent("ptm-crm-session",{detail:{user:out.user}}));
+      await load("cookie");
+    }).catch((e)=>{
+      if(!stopped&&e?.status!==401&&e?.code!=="UNAUTHENTICATED")setError(e.message||"Không kiểm tra được phiên đăng nhập.");
+    }).finally(()=>{if(!stopped)setAuthReady(true)});
+    return()=>{stopped=true};
+  },[]);
   useEffect(()=>{const refresh=()=>session?.token&&load(session.token,true);window.addEventListener("ptm-crm-refresh",refresh);return()=>window.removeEventListener("ptm-crm-refresh",refresh)},[session?.token]);
   useEffect(()=>{if(data&&!visibleNav.some(n=>n.id===view))setView("dashboard")},[data,visibleNav,view]);
   async function load(token=session?.token,quiet=false){
@@ -66,16 +79,35 @@ export default function FullCRMApp(){
         const e=financeResult.reason;
         if(e?.code==="FINANCE_NOT_READY"||/chờ kích hoạt database/i.test(e?.message||"")){setFinance(EMPTY_FINANCE);setFinanceReady(false)}else throw e;
       }
-    }catch(e){setError(e.message);if(/hết hạn|UNAUTHENTICATED/i.test(e.message)){localStorage.removeItem(SESSION_KEY);setSession(null);setData(null);setFull(EMPTY_FULL);setFinance(EMPTY_FINANCE)}}finally{if(!quiet)setBusy(false)}
+    }catch(e){setError(e.message);if(e?.status===401||e?.code==="UNAUTHENTICATED"||/hết hạn|UNAUTHENTICATED/i.test(e.message)){logoutRpc().catch(()=>{});localStorage.removeItem(SESSION_KEY);setSession(null);setData(null);setFull(EMPTY_FULL);setFinance(EMPTY_FINANCE);window.dispatchEvent(new CustomEvent("ptm-crm-session",{detail:null}))}}finally{if(!quiet)setBusy(false)}
   }
-  async function signIn(e){e.preventDefault();setBusy(true);setError("");try{const out=await loginRpc(login.email,login.password);const s={token:out.token,user:out.user};localStorage.setItem(SESSION_KEY,JSON.stringify(s));setSession(s);await load(out.token)}catch(e){setError(e.message)}finally{setBusy(false)}}
-  async function signOut(){try{await coreRpc(session?.token,"logout",{})}catch{}localStorage.removeItem(SESSION_KEY);setSession(null);setData(null);setFull(EMPTY_FULL);setFinance(EMPTY_FINANCE);setView("dashboard")}
+  async function signIn(e){e.preventDefault();setBusy(true);setError("");try{const out=await loginRpc(login.email,login.password);const s={token:"cookie",user:out.user};localStorage.removeItem(SESSION_KEY);setSession(s);window.dispatchEvent(new CustomEvent("ptm-crm-session",{detail:{user:out.user}}));await load("cookie")}catch(e){setError(e.message)}finally{setBusy(false);setAuthReady(true)}}
+  async function signOut(){try{await logoutRpc()}catch{}localStorage.removeItem(SESSION_KEY);setSession(null);setData(null);setFull(EMPTY_FULL);setFinance(EMPTY_FINANCE);setView("dashboard");window.dispatchEvent(new CustomEvent("ptm-crm-session",{detail:null}))}
   async function coreMutate(action,payload={}){setBusy(true);setError("");try{const out=await coreRpc(session?.token,action,payload);await load(session?.token,true);return out}catch(e){setError(e.message);throw e}finally{setBusy(false)}}
   async function fullMutate(action,payload={}){setBusy(true);setError("");try{const out=await fullRpc(session?.token,action,payload);await load(session?.token,true);return out}catch(e){setError(e.message);throw e}finally{setBusy(false)}}
   async function financeMutate(action,payload={}){setBusy(true);setError("");try{const out=await financeRpc(session?.token,action,payload);await load(session?.token,true);return out}catch(e){setError(e.message);throw e}finally{setBusy(false)}}
-  async function bulkImportLeads(rows,onProgress){let success=0;const failed=[];for(let i=0;i<rows.length;i++){const r=rows[i];try{await coreRpc(session?.token,"save_lead",{name:r.name,phone:r.phone,email:r.email||"",source:r.source||"Khác",project:r.project||"Thiên Phúc Vĩnh Hằng Viên",need:r.need||"",budget:r.budget||0,status:r.status||"new",notes:r.notes||"",owner_id:""});success++}catch(e){failed.push({row:r.row,error:e.message})}onProgress?.(i+1,rows.length)}await load(session?.token,true);return{success,failed}}
+  async function bulkImportLeads(rows,onProgress){
+    let success=0,next=0,done=0;
+    const failed=[];
+    const worker=async()=>{
+      while(true){
+        const i=next++;
+        if(i>=rows.length)return;
+        const r=rows[i];
+        try{
+          await coreRpc(session?.token,"save_lead",{name:r.name,phone:r.phone,email:r.email||"",source:r.source||"Khác",project:r.project||"Thiên Phúc Vĩnh Hằng Viên",need:r.need||"",budget:r.budget||0,status:r.status||"new",notes:r.notes||"",owner_id:""});
+          success++;
+        }catch(e){failed.push({row:r.row,error:e.message})}
+        finally{done++;onProgress?.(done,rows.length)}
+      }
+    };
+    await Promise.all(Array.from({length:Math.min(4,rows.length)},()=>worker()));
+    await load(session?.token,true);
+    return{success,failed};
+  }
   async function readNotification(n){if(n.read_at||!fullReady)return;try{await fullRpc(session?.token,"notification.read",{id:n.id});await load(session?.token,true)}catch{}}
 
+  if(!authReady)return <div className="suite-loading"><div className="brand-mark">PTM</div><b>PTM CRM</b><p>Đang kiểm tra phiên đăng nhập...</p></div>;
   if(!session)return <LoginScreen login={login} setLogin={setLogin} signIn={signIn} busy={busy} error={error}/>;
   if(!data)return <div className="suite-loading"><div className="brand-mark">PTM</div><b>PTM CRM</b><p>{error||"Đang tải dữ liệu doanh nghiệp..."}</p><button className="suite-btn primary" onClick={()=>load()}>Tải lại</button></div>;
   const groups=[...new Set(visibleNav.map(n=>n.group))];
