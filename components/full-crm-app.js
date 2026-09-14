@@ -107,7 +107,8 @@ export default function FullCRMApp(){
   }
   async function readNotification(n){if(n.read_at||!fullReady)return;try{await fullRpc(session?.token,"notification.read",{id:n.id});await load(session?.token,true)}catch{}}
 
-  if(!authReady)return <div className="suite-loading"><div className="brand-mark">PTM</div><b>PTM CRM</b><p>Đang kiểm tra phiên đăng nhập...</p></div>;\n  if(!session)return <LoginScreen login={login} setLogin={setLogin} signIn={signIn} busy={busy} error={error}/>;
+  if(!authReady)return <div className="suite-loading"><div className="brand-mark">PTM</div><b>PTM CRM</b><p>Đang kiểm tra phiên đăng nhập...</p></div>;
+  if(!session)return <LoginScreen login={login} setLogin={setLogin} signIn={signIn} busy={busy} error={error}/>;
   if(!data)return <div className="suite-loading"><div className="brand-mark">PTM</div><b>PTM CRM</b><p>{error||"Đang tải dữ liệu doanh nghiệp..."}</p><button className="suite-btn primary" onClick={()=>load()}>Tải lại</button></div>;
   const groups=[...new Set(visibleNav.map(n=>n.group))];
   return <div className="suite-shell"><aside className="suite-sidebar"><div className="suite-brand"><div className="brand-mark">PTM</div><div><b>Phúc Trường Minh</b><span>Thiên Phúc CRM</span></div></div><div className="suite-menu">{groups.map(group=><div key={group} className="suite-menu-group"><small>{group}</small>{visibleNav.filter(n=>n.group===group).map(n=><button key={n.id} className={view===n.id?"active":""} onClick={()=>setView(n.id)}><i>{n.icon}</i><span>{n.label}</span></button>)}</div>)}</div><div className="suite-sidebar-user"><div className="suite-avatar">{data.user.name.slice(0,2).toUpperCase()}</div><div><b>{data.user.name}</b><span>{roleLabel(data.user.role)}</span></div><button onClick={signOut}>↪</button></div></aside>
