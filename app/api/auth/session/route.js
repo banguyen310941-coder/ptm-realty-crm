@@ -13,7 +13,7 @@ export async function GET(request) {
   if (!token) return NextResponse.json({ ok:false,error:"UNAUTHENTICATED" },{ status:401,headers:{ "Cache-Control":"no-store" } });
 
   try {
-    const result = await serverRpc("crm_api_v2",{ p_token:token,p_action:"bootstrap",p_payload:{} });
+    const result = await serverRpc("crm_session_user_v1",{ p_token:token });
     if (!result?.ok) {
       const response = NextResponse.json(result || { ok:false,error:"UNAUTHENTICATED" },{ status:401,headers:{ "Cache-Control":"no-store" } });
       return clear(response);
