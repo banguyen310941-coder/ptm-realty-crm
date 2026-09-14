@@ -4,7 +4,8 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "test": "node scripts/readiness-check.mjs",\n    "build": "next build",
+    "test": "node scripts/readiness-check.mjs",
+    "build": "next build",
     "start": "next start"
   },
   "dependencies": {
