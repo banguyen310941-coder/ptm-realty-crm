@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { SESSION_KEY, coreRpc, fullRpc, financeRpc, cemeteryRpc, loginRpc, automationSweep, fmtDate } from "@/lib/crm-client";
+import { SESSION_KEY, coreRpc, fullRpc, financeRpc, cemeteryRpc, loginRpc, fmtDate } from "@/lib/crm-client";
 import { getPermissions, roleLabel } from "@/lib/rbac";
 import { ExecutiveDashboard, ReportsModule } from "@/components/crm-suite/dashboard-reports";
 import { CustomersModule } from "@/components/crm-suite/customers";
@@ -41,23 +41,31 @@ export default function FullCRMApp(){
   useEffect(()=>{const raw=localStorage.getItem(SESSION_KEY);if(!raw)return;try{const s=JSON.parse(raw);setSession(s);load(s.token);}catch{localStorage.removeItem(SESSION_KEY)}},[]);
   useEffect(()=>{const refresh=()=>session?.token&&load(session.token,true);window.addEventListener("ptm-crm-refresh",refresh);return()=>window.removeEventListener("ptm-crm-refresh",refresh)},[session?.token]);
   useEffect(()=>{if(data&&!visibleNav.some(n=>n.id===view))setView("dashboard")},[data,visibleNav,view]);
-  useEffect(()=>{
-    if(!session?.token)return;
-    let stopped=false;
-    const tick=async()=>{try{const out=await automationSweep();if(!stopped&&(Number(out?.actions_run||0)>0||Number(out?.lead_routing?.expired_count||0)>0))await load(session.token,true)}catch{}};
-    tick();
-    const timer=setInterval(tick,240000);
-    return()=>{stopped=true;clearInterval(timer)};
-  },[session?.token]);
-
   async function load(token=session?.token,quiet=false){
     if(!token)return;if(!quiet)setBusy(true);setError("");
     try{
       const core=await coreRpc(token,"bootstrap",{});setData(core);
-      try{const extended=await fullRpc(token,"bootstrap",{});setFull({...EMPTY_FULL,...extended});setFullReady(true)}catch(e){if(e.code==="FULL_CRM_NOT_READY"||/chưa được kích hoạt/i.test(e.message)){setFull(EMPTY_FULL);setFullReady(false)}else throw e}
-      if(core.user?.role!=="marketing"){
-        try{const f=await financeRpc(token,"bootstrap",{});setFinance({...EMPTY_FINANCE,...f,summary:{...EMPTY_FINANCE.summary,...(f.summary||{})}});setFinanceReady(true)}catch(e){if(e.code==="FINANCE_NOT_READY"||/chờ kích hoạt database/i.test(e.message)){setFinance(EMPTY_FINANCE);setFinanceReady(false)}else throw e}
-      }else{setFinance(EMPTY_FINANCE);setFinanceReady(true)}
+      const [fullResult,financeResult]=await Promise.allSettled([
+        fullRpc(token,"bootstrap",{}),
+        core.user?.role!=="marketing" ? financeRpc(token,"bootstrap",{}) : Promise.resolve(null)
+      ]);
+
+      if(fullResult.status==="fulfilled"){
+        setFull({...EMPTY_FULL,...fullResult.value});setFullReady(true);
+      }else{
+        const e=fullResult.reason;
+        if(e?.code==="FULL_CRM_NOT_READY"||/chưa được kích hoạt/i.test(e?.message||"")){setFull(EMPTY_FULL);setFullReady(false)}else throw e;
+      }
+
+      if(core.user?.role==="marketing"){
+        setFinance(EMPTY_FINANCE);setFinanceReady(true);
+      }else if(financeResult.status==="fulfilled"){
+        const f=financeResult.value||{};
+        setFinance({...EMPTY_FINANCE,...f,summary:{...EMPTY_FINANCE.summary,...(f.summary||{})}});setFinanceReady(true);
+      }else{
+        const e=financeResult.reason;
+        if(e?.code==="FINANCE_NOT_READY"||/chờ kích hoạt database/i.test(e?.message||"")){setFinance(EMPTY_FINANCE);setFinanceReady(false)}else throw e;
+      }
     }catch(e){setError(e.message);if(/hết hạn|UNAUTHENTICATED/i.test(e.message)){localStorage.removeItem(SESSION_KEY);setSession(null);setData(null);setFull(EMPTY_FULL);setFinance(EMPTY_FINANCE)}}finally{if(!quiet)setBusy(false)}
   }
   async function signIn(e){e.preventDefault();setBusy(true);setError("");try{const out=await loginRpc(login.email,login.password);const s={token:out.token,user:out.user};localStorage.setItem(SESSION_KEY,JSON.stringify(s));setSession(s);await load(out.token)}catch(e){setError(e.message)}finally{setBusy(false)}}
