@@ -44,7 +44,15 @@ assert(loginMigration.includes("crypt(p_password,p_encoded)=p_encoded"),"Bcrypt 
 assert(loginMigration.includes("u.password_hash LIKE 'pbkdf2_sha256$%'"),"Legacy password auto-upgrade missing.");
 assert(loginMigration.includes("gen_salt('bf',10)"),"Bcrypt cost baseline missing.");
 
+const opportunityFallback=read("components/crm-suite/opportunities-cemetery.js");
+const quickLauncher=read("components/customer-quick-launcher.js");
+assert(!opportunityFallback.includes("localStorage.getItem(SESSION_KEY"),"Opportunity fallback must not read legacy session storage.");
+assert(!quickLauncher.includes("localStorage.getItem(SESSION_KEY"),"Quick customer launcher must not read legacy session storage.");
+
 const housekeeping=read(".github/workflows/housekeeping.yml");
 assert(housekeeping.includes('cron: "*/5 * * * *"'),"Server housekeeping schedule must remain enabled.");
+const housekeepingGuard=read("sql/housekeeping-slot-guard-20260914.sql");
+assert(housekeepingGuard.includes("crm_housekeeping_tick_slots"),"Housekeeping slot guard table is missing.");
+assert(housekeepingGuard.includes("duplicate_slot"),"Housekeeping public tick must stay idempotent per time slot.");
 
 console.log("PTM CRM readiness checks passed.");
