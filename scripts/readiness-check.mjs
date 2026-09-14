@@ -53,7 +53,11 @@ assert(!opportunityFallback.includes("localStorage.getItem(SESSION_KEY"),"Opport
 assert(!quickLauncher.includes("localStorage.getItem(SESSION_KEY"),"Quick customer launcher must not read legacy session storage.");
 
 const housekeeping=read(".github/workflows/housekeeping.yml");
-assert(housekeeping.includes('cron: "*/5 * * * *"'),"Server housekeeping schedule must remain enabled.");
+assert(housekeeping.includes("workflow_dispatch:"),"GitHub housekeeping fallback must remain manually runnable.");
+assert(!housekeeping.includes('cron: "*/5 * * * *"'),"GitHub must not be the primary recurring housekeeping scheduler.");
+const pgCron=read("sql/neon-pg-cron-housekeeping-20260914.sql");
+assert(pgCron.includes("'*/5 * * * *'"),"Neon pg_cron must schedule housekeeping every five minutes.");
+assert(pgCron.includes("crm_housekeeping_cron_v1"),"Neon pg_cron must call the owner-only housekeeping function.");
 const housekeepingGuard=read("sql/housekeeping-slot-guard-20260914.sql");
 assert(housekeepingGuard.includes("crm_housekeeping_tick_slots"),"Housekeeping slot guard table is missing.");
 assert(housekeepingGuard.includes("duplicate_slot"),"Housekeeping public tick must stay idempotent per time slot.");
