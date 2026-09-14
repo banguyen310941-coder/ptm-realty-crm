@@ -30,6 +30,9 @@ assert(!leadOffer.includes("client.rpc"),"Lead offer polling must use the server
 const authLogin=read("app/api/auth/login/route.js");
 assert(authLogin.includes("httpOnly:true"),"CRM auth cookie must be HttpOnly.");
 assert(authLogin.includes('sameSite:"strict"'),"CRM auth cookie must be SameSite=Strict.");
+const authSession=read("app/api/auth/session/route.js");
+assert(authSession.includes("crm_session_user_v1"),"Session restore must use the lightweight session RPC.");
+assert(!authSession.includes('p_action:"bootstrap"'),"Session restore must not load the full CRM bootstrap.");
 
 const sw=read("public/sw.js");
 assert(sw.includes('if(url.pathname.startsWith("/api/")) return;'),"Service worker must never cache CRM APIs.");
