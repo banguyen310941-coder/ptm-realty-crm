@@ -22,6 +22,11 @@ const next=read("next.config.mjs");
 assert(next.includes("frame-ancestors 'none'"),"CSP frame protection missing.");
 assert(next.includes("object-src 'none'"),"CSP object-src protection missing.");
 
+const loginMigration=read("sql/login-capacity-bcrypt-20260914.sql");
+assert(loginMigration.includes("crypt(p_password,p_encoded)=p_encoded"),"Bcrypt verification compatibility missing.");
+assert(loginMigration.includes("u.password_hash LIKE 'pbkdf2_sha256$%'"),"Legacy password auto-upgrade missing.");
+assert(loginMigration.includes("gen_salt('bf',10)"),"Bcrypt cost baseline missing.");
+
 const housekeeping=read(".github/workflows/housekeeping.yml");
 assert(housekeeping.includes('cron: "*/5 * * * *"'),"Server housekeeping schedule must remain enabled.");
 
