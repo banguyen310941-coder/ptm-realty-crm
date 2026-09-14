@@ -1,8 +1,6 @@
-name: CRM Housekeeping
+name: CRM Housekeeping Fallback
 
 on:
-  schedule:
-    - cron: "*/5 * * * *"
   workflow_dispatch:
 
 permissions:
@@ -28,7 +26,7 @@ jobs:
           oidc_token="$(printf '%s' "$token_json" | jq -r '.value // empty')"
           test -n "$oidc_token"
 
-          response="$(curl --fail --silent --show-error \
+          # Manual fallback only. The primary scheduler is Neon pg_cron.\n          response="$(curl --fail --silent --show-error \
             --retry 2 \
             --retry-delay 2 \
             --max-time 40 \
