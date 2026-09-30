@@ -9,6 +9,11 @@ assert(!app.includes("setInterval(tick,240000)"),"Per-browser 4-minute housekeep
 assert(app.includes("Promise.allSettled"),"Extended CRM and Finance bootstrap should load concurrently.");
 assert(!app.includes("localStorage.setItem(SESSION_KEY"),"CRM session token must not be persisted in localStorage.");
 assert(app.includes('token:"cookie"'),"Client session should use a non-secret cookie sentinel.");
+assert(app.includes('userRole={data.user.role}'),"Fanpage inbox must receive the current CRM role.");
+
+const facebookInbox=read("components/crm-suite/facebook-inbox.js");
+assert(facebookInbox.includes('const canManageAutomation = ["ceo","admin","manager","marketing"].includes(userRole);'),"Fanpage automation controls must match backend role permissions.");
+assert(facebookInbox.includes('{canManageAutomation && <button className="suite-btn primary"'),"Sale must not see restricted Fanpage automation controls.");
 
 const rbac=read("lib/rbac.js");
 for(const role of ["ceo","admin","manager","marketing","sale","accounting"]){
@@ -61,5 +66,15 @@ assert(pgCron.includes("crm_housekeeping_cron_v1"),"Neon pg_cron must call the o
 const housekeepingGuard=read("sql/housekeeping-slot-guard-20260914.sql");
 assert(housekeepingGuard.includes("crm_housekeeping_tick_slots"),"Housekeeping slot guard table is missing.");
 assert(housekeepingGuard.includes("duplicate_slot"),"Housekeeping public tick must stay idempotent per time slot.");
+
+const privilegeCleanup=read("sql/data-api-privilege-cleanup-20260930.sql");
+for(const signature of [
+  "crm_cemetery_api(text,text,jsonb)",
+  "crm_finance_api_v2(text,text,jsonb)",
+  "crm_inventory_sync_v1(text,jsonb)"
+]){
+  assert(privilegeCleanup.includes(`REVOKE EXECUTE ON FUNCTION public.${signature} FROM PUBLIC, authenticated;`),`Authenticated RPC grant must be revoked: ${signature}`);
+  assert(privilegeCleanup.includes(`GRANT EXECUTE ON FUNCTION public.${signature} TO anonymous;`),`Anonymous server RPC boundary must remain available: ${signature}`);
+}
 
 console.log("PTM CRM readiness checks passed.");

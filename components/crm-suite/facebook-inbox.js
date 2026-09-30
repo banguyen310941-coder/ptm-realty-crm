@@ -36,7 +36,7 @@ async function requestJson(url, token, options = {}) {
   return data;
 }
 
-export function FacebookInboxModule({ sessionToken }) {
+export function FacebookInboxModule({ sessionToken, userRole }) {
   const [inbox,setInbox] = useState({ conversations:[], unread_total:0, runtime:null });
   const [selectedId,setSelectedId] = useState("");
   const [thread,setThread] = useState(null);
@@ -53,6 +53,7 @@ export function FacebookInboxModule({ sessionToken }) {
   const [stateFilter,setStateFilter] = useState("all");
   const [pageFilter,setPageFilter] = useState("");
   const [tagFilter,setTagFilter] = useState("");
+  const canManageAutomation = ["ceo","admin","manager","marketing"].includes(userRole);
 
   const conversationTagMap = useMemo(() => {
     const map={};
@@ -255,7 +256,7 @@ export function FacebookInboxModule({ sessionToken }) {
       </div>
       <div className="facebook-inbox-head-actions">
         <span className="suite-live">{Number(inbox.unread_total || 0)} chưa đọc</span>
-        <button className="suite-btn primary" onClick={() => setAutomationOpen(true)}>⚡ Kịch bản & AI</button>
+        {canManageAutomation && <button className="suite-btn primary" onClick={() => setAutomationOpen(true)}>⚡ Kịch bản & AI</button>}
         <button className="suite-btn" onClick={() => setOpsOpen(true)}>☷ Vận hành & Báo cáo</button>
         <button className="suite-btn" onClick={() => { loadInbox(); loadOps(); }} disabled={loading}>↻ Làm mới</button>
       </div>
@@ -455,12 +456,12 @@ export function FacebookInboxModule({ sessionToken }) {
       </aside>
     </div>
 
-    <FacebookAutomationPanel
+    {canManageAutomation && <FacebookAutomationPanel
       open={automationOpen}
       onClose={() => setAutomationOpen(false)}
       sessionToken={sessionToken}
       conversationId={selectedId}
-    />
+    />}
     <FacebookOpsPanel
       open={opsOpen}
       onClose={() => setOpsOpen(false)}
